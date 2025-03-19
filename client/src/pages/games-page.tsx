@@ -192,6 +192,71 @@ export default function GamesPage() {
     }
   };
 
+  // Add the new handleFastReset function after the handleResetDatabase function
+  const handleFastReset = async () => {
+    try {
+      // 1. Reset Database
+      const resetResponse = await fetch("/api/database/reset", {
+        method: "POST",
+      });
+      if (!resetResponse.ok) {
+        throw new Error("Failed to reset database");
+      }
+
+      // 2. Create new game set with defaults
+      const gameSetResponse = await fetch("/api/game-sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playersPerTeam: 4,
+          gym: 'fonde',
+          maxConsecutiveTeamWins: 2,
+          timeLimit: 15,
+          winScore: 21,
+          pointSystem: '2s and 3s',
+          numberOfCourts: 2,
+        }),
+      });
+      if (!gameSetResponse.ok) {
+        throw new Error("Failed to create game set");
+      }
+
+      // 3. Check in all players
+      const checkInResponse = await fetch("/api/checkins/check-in-all", {
+        method: "POST",
+      });
+      if (!checkInResponse.ok) {
+        throw new Error("Failed to check in all players");
+      }
+
+      // 4. Invalidate all relevant queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/checkins"] }),
+      ]);
+
+      // 5. Trigger refresh and show success message
+      triggerRefresh();
+      toast({
+        title: "Success",
+        description: "Fast reset completed successfully",
+      });
+
+      // 6. Change tab to new-game
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('tab', 'new-game');
+      setLocation(`/games?${searchParams.toString()}`);
+    } catch (error) {
+      console.error("Error during fast reset:", error);
+      toast({
+        title: "Error",
+        description: "Failed to complete fast reset",
+        variant: "destructive",
+      });
+    }
+  };
+
   function NewGameSetForm() {
     const form = useForm<InsertGameSet>({
       resolver: zodResolver(insertGameSetSchema),
@@ -404,6 +469,15 @@ export default function GamesPage() {
             <Button onClick={handleResetDatabase} variant="destructive">
               Reset Database
             </Button>
+            {user?.isRoot && (
+              <Button
+                onClick={handleFastReset}
+                variant="default"
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                FAST RESET
+              </Button>
+            )}
           </div>
         </div>
         <Card>
