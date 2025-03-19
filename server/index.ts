@@ -11,30 +11,15 @@ app.get('/test', (_req, res) => {
   res.send('Hello World - Test Route');
 });
 
+// Add detailed error logging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
   });
 
@@ -42,62 +27,42 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    console.log('Starting server initialization...');
+    const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
-
-  const tryPort = (port: number): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      log(`Attempting to bind to port ${port}...`);
-
-      const tryServer = server.listen({
-        port,
-        host: "0.0.0.0",
-      });
-
-      tryServer.on('listening', () => {
-        // Add a short delay before declaring success
-        setTimeout(() => {
-          log(`Successfully bound to port ${port}`);
-          resolve(port);
-        }, 100);
-      });
-
-      tryServer.on('error', (err: any) => {
-        // Ensure server is closed before trying next port
-        tryServer.close(() => {
-          log(`Closed server on port ${port}`);
-          if (err.code === 'EADDRINUSE') {
-            log(`Port ${port} is in use, attempting port ${port + 1}`);
-            // Try next port after current server is fully closed
-            setTimeout(() => {
-              tryPort(port + 1).then(resolve).catch(reject);
-            }, 100);
-          } else {
-            log(`Failed to bind to port ${port}: ${err.message}`);
-            reject(err);
-          }
-        });
-      });
+    // Error handling middleware
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      console.error('Server Error:', err);
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      res.status(status).json({ message });
     });
-  };
 
-  tryPort(5000).then(usedPort => {
-    log(`Server successfully started and serving on port ${usedPort}`);
-  }).catch(err => {
-    log(`Failed to start server: ${err.message}`);
+    // Let the environment determine which mode to use
+    if (process.env.NODE_ENV === "production") {
+      console.log('Setting up static file serving...');
+      serveStatic(app);
+    } else {
+      console.log('Setting up Vite development middleware...');
+      await setupVite(app, server);
+    }
+
+    // Start server with detailed logging
+    const port = process.env.PORT || 5000;
+    server.listen({
+      port,
+      host: "0.0.0.0"
+    }, () => {
+      console.log(`Server started successfully on port ${port}`);
+      log(`Server is ready and listening on port ${port}`);
+    });
+
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    if (err instanceof Error) {
+      console.error('Error stack:', err.stack);
+    }
     process.exit(1);
-  });
+  }
 })();
