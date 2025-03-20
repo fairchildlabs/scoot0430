@@ -251,6 +251,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('POST /api/player-move - Request:', { playerId, moveType, setId });
 
+      // Get player information before the move
+      const user = await db
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.id, playerId))
+        .then(rows => rows[0]);
+
+      if (!user) {
+        return res.status(404).json({ error: "Player not found" });
+      }
+
       // Get current game state
       const gameState = await populateGame(setId);
       console.log('Current game state:', gameState);
@@ -267,8 +278,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.handlePlayerMove(playerId, moveType);
       console.log('Player move handled successfully');
 
-      // Return the new state
-      res.json(result.updatedState);
+      // Get information about the operation that was performed
+      let operationDetails = {
+        player: user.username,
+        moveType: moveType,
+        details: {}
+      };
+
+      // Return the new state with additional details about the operation
+      res.json({
+        ...result.updatedState,
+        operation: operationDetails
+      });
     } catch (error: any) {
       console.error('Player move failed:', error);
       res.status(500).json({ error: (error as Error).message });
