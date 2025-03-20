@@ -155,7 +155,7 @@ export class DatabaseStorage implements IStorage {
     const [game] = await db
       .insert(games)
       .values({
-        gameSetId: setId,
+        setId: setId, // Match the column name in the schema
         court,
         state,
         team1Score: 0,
@@ -241,8 +241,8 @@ export class DatabaseStorage implements IStorage {
       .values({
         gameId,
         userId,
-        team,
-        insertTime: getCentralTime()
+        team
+        // Remove insertTime field as it's not in the schema
       })
       .returning();
     return player;
@@ -268,7 +268,7 @@ export class DatabaseStorage implements IStorage {
         gameId: gamePlayers.gameId,
         userId: gamePlayers.userId,
         team: gamePlayers.team,
-        insertTime: gamePlayers.insertTime,
+        // removed insertTime as it's not in the schema
         username: users.username,
         birthYear: users.birthYear,
         queuePosition: checkins.queuePosition
@@ -317,7 +317,7 @@ export class DatabaseStorage implements IStorage {
     const gamesList = await db
       .select()
       .from(games)
-      .where(eq(games.gameSetId, gameSetId))
+      .where(eq(games.setId, gameSetId))
       .orderBy(asc(games.startTime));
     
     const logEntries = [];
@@ -331,13 +331,13 @@ export class DatabaseStorage implements IStorage {
           gameId: gamePlayers.gameId,
           userId: gamePlayers.userId,
           team: gamePlayers.team,
-          insertTime: gamePlayers.insertTime,
+          // Remove insertTime as it's not in the schema
           username: users.username
         })
         .from(gamePlayers)
         .innerJoin(users, eq(gamePlayers.userId, users.id))
         .where(eq(gamePlayers.gameId, game.id))
-        .orderBy(asc(gamePlayers.insertTime));
+        .orderBy(asc(gamePlayers.id)); // Order by ID instead of insertTime
       
       // Group players by team
       const team1Players = players.filter(p => p.team === 1).map(p => p.username);
