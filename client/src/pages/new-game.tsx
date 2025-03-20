@@ -1,6 +1,4 @@
 import { useAuth } from "@/hooks/use-auth";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Loader2, X, HandMetal, ArrowLeftRight, ArrowDown } from "lucide-react";
@@ -234,14 +232,8 @@ const NewGamePage = () => {
 
   if (gameSetLoading || checkinsLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="container mx-auto px-4 py-8">
-          <div className="flex justify-center">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        </main>
-        <Footer />
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -471,102 +463,98 @@ const NewGamePage = () => {
   const playersCheckedIn = checkins?.length || 0;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Set #{activeGameSet.id} Roster</CardTitle>
-            {statusMessage && (
-              <div className="text-red-500 mt-2 text-sm">
-                {statusMessage}
+    <div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Set #{activeGameSet.id} Roster</CardTitle>
+          {statusMessage && (
+            <div className="text-red-500 mt-2 text-sm">
+              {statusMessage}
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {playersCheckedIn < playersNeeded ? (
+            <div className="text-center py-4">
+              <p className="text-destructive font-medium">Not enough players checked in (Currently {playersCheckedIn})</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Need {playersNeeded} players ({activeGameSet.playersPerTeam} per team) to start a game.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Select Court</h3>
+                <CourtSelection />
               </div>
-            )}
-          </CardHeader>
-          <CardContent>
-            {playersCheckedIn < playersNeeded ? (
-              <div className="text-center py-4">
-                <p className="text-destructive font-medium">Not enough players checked in (Currently {playersCheckedIn})</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Need {playersNeeded} players ({activeGameSet.playersPerTeam} per team) to start a game.
-                </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Home Team */}
+                <Card className="bg-black/20 border border-white">
+                  <CardHeader>
+                    <CardTitle className="text-white">Home</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {homePlayers.map((player: any, index: number) => (
+                        <PlayerCard key={player.id} player={player} index={index} />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Away Team */}
+                <Card className="bg-black/20 border border-white">
+                  <CardHeader>
+                    <CardTitle className="text-white">Away</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {awayPlayers.map((player: any, index: number) => (
+                        <PlayerCard
+                          key={player.id}
+                          player={player}
+                          index={index}
+                          isAway
+                        />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Select Court</h3>
-                  <CourtSelection />
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Home Team */}
-                  <Card className="bg-black/20 border border-white">
-                    <CardHeader>
-                      <CardTitle className="text-white">Home</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        {homePlayers.map((player: any, index: number) => (
-                          <PlayerCard key={player.id} player={player} index={index} />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+              <Button
+                className="w-full border border-white"
+                onClick={() => createGameMutation.mutate()}
+                disabled={createGameMutation.isPending}
+              >
+                {createGameMutation.isPending ? "Creating..." : "Create Game"}
+              </Button>
 
-                  {/* Away Team */}
-                  <Card className="bg-black/20 border border-white">
-                    <CardHeader>
-                      <CardTitle className="text-white">Away</CardTitle>
-                    </CardHeader>
-                    <CardContent>
+              {/* Next Up Section */}
+              {nextUpPlayers.length > 0 && (
+                <div className="mt-8">
+                  <h3 className="text-lg font-medium mb-4">Next Up</h3>
+                  <Card className="bg-black/10">
+                    <CardContent className="pt-6">
                       <div className="space-y-2">
-                        {awayPlayers.map((player: any, index: number) => (
+                        {nextUpPlayers.map((player: any, index: number) => (
                           <PlayerCard
                             key={player.id}
                             player={player}
                             index={index}
-                            isAway
+                            isNextUp
                           />
                         ))}
                       </div>
                     </CardContent>
                   </Card>
                 </div>
-
-                <Button
-                  className="w-full border border-white"
-                  onClick={() => createGameMutation.mutate()}
-                  disabled={createGameMutation.isPending}
-                >
-                  {createGameMutation.isPending ? "Creating..." : "Create Game"}
-                </Button>
-
-                {/* Next Up Section */}
-                {nextUpPlayers.length > 0 && (
-                  <div className="mt-8">
-                    <h3 className="text-lg font-medium mb-4">Next Up</h3>
-                    <Card className="bg-black/10">
-                      <CardContent className="pt-6">
-                        <div className="space-y-2">
-                          {nextUpPlayers.map((player: any, index: number) => (
-                            <PlayerCard
-                              key={player.id}
-                              player={player}
-                              index={index}
-                              isNextUp
-                            />
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </main>
-      <Footer />
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
