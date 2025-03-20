@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { pool } from "./db";
+import { pool, testDatabaseConnection } from "./db";
 
 const app = express();
 app.use(express.json());
@@ -27,7 +27,10 @@ app.use((req, res, next) => {
     console.log('Starting server initialization...');
 
     // Test database connection before proceeding
-    await pool.connect();
+    const isConnected = await testDatabaseConnection();
+    if (!isConnected) {
+      throw new Error('Failed to establish database connection after retries');
+    }
     console.log('Database connection successful');
 
     const server = await registerRoutes(app);
