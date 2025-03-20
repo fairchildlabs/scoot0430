@@ -1,6 +1,6 @@
 import { users, type User, type InsertUser, checkins, type Checkin, type Game, games, type GamePlayer, gamePlayers, type GameSet, gameSets, type InsertGameSet } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc, inArray, not, lt, gt } from "drizzle-orm";
+import { eq, and, sql, desc, inArray, not, lt, gt, gte } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
