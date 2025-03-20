@@ -19,6 +19,11 @@ function getDateString(date: Date) {
   return date.toISOString().split('T')[0];
 }
 
+// Utility function for consistent moveType comparison
+function isMoveType(moveType: string, expected: string): boolean {
+  return moveType.toUpperCase() === expected.toUpperCase();
+}
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -1097,7 +1102,7 @@ export class DatabaseStorage implements IStorage {
 
     console.log(`Detected ${playerPosition} position for ${currentCheckin.username}`);
 
-    if (moveType === 'checkout') {
+    if (isMoveType(moveType, 'CHECKOUT')) {
       if (playerPosition === 'HOME') {
         console.log(`Processing HOME team checkout for ${currentCheckin.username}:`, {
           checkinId: currentCheckin.id,
@@ -1679,7 +1684,7 @@ export class DatabaseStorage implements IStorage {
 
     console.log(`Detected ${playerPosition} position for ${currentCheckin.username}`);
 
-    if (moveType === 'checkout') {
+    if (isMoveType(moveType, 'CHECKOUT')) {
       if (playerPosition === 'HOME') {
         console.log(`Processing HOME team checkout for ${currentCheckin.username}:`, {
           checkinId: currentCheckin.id,
