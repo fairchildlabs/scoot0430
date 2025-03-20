@@ -789,249 +789,147 @@ export class DatabaseStorage implements IStorage {
   async handlePlayerMove(userId: number, moveType: string): Promise<void> {
     console.log(`Handling player move:`, { userId, moveType });
 
-    if (moveType === 'checkout') {
-      // Get the current game and team info for the player being checked out
-      const [currentCheckin] = await db
-        .select({
-          id: checkins.id,
-          gameId: checkins.gameId,
-          team: checkins.team,
-          username: users.username,
-          queuePosition: checkins.queuePosition
-        })
-        .from(checkins)
-        .innerJoin(users, eq(checkins.userId, users.id))
-        .where(
-          and(
-            eq(checkins.userId, userId),
-            eq(checkins.isActive, true)
-          )
-        );
+    // Get the current active game set first
+    const activeGameSet = await this.getActiveGameSet();
+    if (!activeGameSet) {
+      throw new Error('No active game set found');
+    }
 
-      console.log('Current player checkin:', {
-        id: currentCheckin?.id,
-        username: currentCheckin?.username,
-        gameId: currentCheckin?.gameId,
-        team: currentCheckin?.team,
-        queuePosition: currentCheckin?.queuePosition
-      });
-
-      if (!currentCheckin?.gameId || !currentCheckin?.team) {
-        throw new Error(`No active game/team found for user ${userId}`);
-      }
-
-      // Get the active game set
-      const activeGameSet = await this.getActiveGameSet();
-      if (!activeGameSet) {
-        throw new Error('No active game set found');
-      }
-
-      // Log current team composition
-      const currentTeamPlayers = await db
-        .select({
-          userId: gamePlayers.userId,
-          username: users.username,
-          team: gamePlayers.team
-        })
-        .from(gamePlayers)
-        .innerJoin(users, eq(gamePlayers.userId, users.id))
-        .where(
-          and(
-            eq(gamePlayers.gameId, currentCheckin.gameId),
-            eq(gamePlayers.team, currentCheckin.team)
-          )
-        );
-
-      console.log('Current team composition:', {
-        team: currentCheckin.team,
-        playerCount: currentTeamPlayers.length,
-        players: currentTeamPlayers.map(p => ({ id: p.userId, name: p.username }))
-      });
-
-      // After deactivating current player
-      await db
-        .update(checkins)
-        .set({ isActive: false })
-        .where(eq(checkins.id, currentCheckin.id));
-      console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username}`);
-
-      // Decrement queue positions for all players after the checked out player
-      await db
-        .update(checkins)
-        .set({
-          queuePosition: sql`${checkins.queuePosition} - 1`
-        })
-        .where(
-          and(
-            eq(checkins.isActive, true),
-            eq(checkins.gameSetId, activeGameSet.id),
-            eq(checkins.checkInDate, getDateString(getCentralTime())),
-            gt(checkins.queuePosition, currentCheckin.queuePosition)
-          )
-        );
-      console.log(`Decremented queue positions after position ${currentCheckin.queuePosition}`);
-
-      // Decrement game set's queue_next_up
-      await db
-        .update(gameSets)
-        .set({
-          queueNextUp: sql`${gameSets.queueNextUp} - 1`
-        })
-        .where(eq(gameSets.id, activeGameSet.id));
-      console.log(`Decremented game set queue_next_up`);
-
-      // Get the next player in queue (they should now have the checked-out player's position)
-      const [nextPlayerCheckin] = await db
-        .select({
-          id: checkins.id,
-          userId: checkins.userId,
-          username: users.username,
-          queuePosition: checkins.queuePosition
-        })
-        .from(checkins)
-        .innerJoin(users, eq(checkins.userId, users.id))
-        .where(
-          and(
-            eq(checkins.isActive, true),
-            eq(checkins.gameId, null),
-            eq(checkins.gameSetId, activeGameSet.id)
-          )
+    // Get current user's checkin
+    const [currentCheckin] = await db
+      .select({
+        id: checkins.id,
+        gameId: checkins.gameId,
+        team: checkins.team,
+        username: users.username,
+        queuePosition: checkins.queuePosition,
+        isActive: checkins.isActive
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(
+        and(
+          eq(checkins.userId, userId),
+          eq(checkins.isActive, true),
+          eq(checkins.checkInDate, getDateString(getCentralTime()))
         )
-        .orderBy(checkins.queuePosition)
-        .limit(1);
+      );
 
-      if (nextPlayerCheckin) {
-        console.log('Found next player in queue:', {
-          id: nextPlayerCheckin.id,
-          username: nextPlayerCheckin.username,
-          queuePosition: nextPlayerCheckin.queuePosition
-        });
+    console.log('Current player checkin:', {
+      id: currentCheckin?.id,
+      username: currentCheckin?.username,
+      gameId: currentCheckin?.gameId,
+      team: currentCheckin?.team,
+      queuePosition: currentCheckin?.queuePosition,
+      isActive: currentCheckin?.isActive
+    });
 
-        try {
-          // Deactivate current player's checkin
-          await db
-            .update(checkins)
-            .set({ isActive: false })
-            .where(eq(checkins.id, currentCheckin.id));
-          console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username}`);
+    if (!currentCheckin) {
+      throw new Error(`No active checkin found for user ${userId}`);
+    }
 
-          // Update next player's checkin
-          await db
-            .update(checkins)
-            .set({
-              gameId: currentCheckin.gameId,
-              team: currentCheckin.team
-            })
-            .where(eq(checkins.id, nextPlayerCheckin.id));
-          console.log(`Updated checkin ${nextPlayerCheckin.id} with game${currentCheckin.gameId} and team ${currentCheckin.team}`);
-
-          // Add next player to game
-          await this.createGamePlayer(
-            currentCheckin.gameId,
-            nextPlayerCheckin.userId,
-            currentCheckin.team
-          );
-
-          console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
-          return;
-        } catch (error) {
-          console.error('Error replacing with queued player:', error);
-        }
+    if (moveType === 'checkout') {
+      // Handle differently based on whether player is in game or queue
+      if (currentCheckin.gameId && currentCheckin.team) {
+        // Player is in a game - handle game checkout
+        await this.handleGamePlayerCheckout(currentCheckin, activeGameSet);
+      } else {
+        // Player is in queue - just deactivate and update queue
+        await this.handleQueuePlayerCheckout(currentCheckin, activeGameSet);
       }
-
-      // If we get here, try auto-up player
-      console.log('No queue players available, trying auto-up players...');
-
-      // Get current game players to exclude
-      const currentPlayers = await db
-        .select({
-          userId: gamePlayers.userId
-        })
-        .from(gamePlayers)
-        .where(eq(gamePlayers.gameId, currentCheckin.gameId));
-
-      const currentPlayerIds = currentPlayers.map(p => p.userId);
-
-      // Find available auto-up player
-      const [autoUpPlayer] = await db
-        .select({
-          id: users.id,
-          username: users.username
-        })
-        .from(users)
-        .where(
-          and(
-            eq(users.autoup, true),
-            not(inArray(users.id, currentPlayerIds))
-          )
-        );
-
-      if (autoUpPlayer) {
-        console.log('Found auto-up player:', {
-          id: autoUpPlayer.id,
-          username: autoUpPlayer.username
-        });
-
-        try {
-          // Deactivate current player's checkin if not already done
-          await db
-            .update(checkins)
-            .set({ isActive: false })
-            .where(eq(checkins.id, currentCheckin.id));
-          console.log(`Deactivated checkin ${currentCheckin.id} for auto-up replacement`);
-
-          // Create new checkin for auto-up player
-          const now = getCentralTime();
-          const [newCheckin] = await db
-            .insert(checkins)
-            .values({
-              userId: autoUpPlayer.id,
-              clubIndex: 34,
-              checkInTime: now,
-              isActive: true,
-              checkInDate: getDateString(now),
-              gameSetId: activeGameSet.id,
-              queuePosition: activeGameSet.queueNextUp,
-              type: 'autoup',
-              gameId: currentCheckin.gameId,
-              team: currentCheckin.team
-            })
-            .returning();
-
-          console.log('Created new checkin for auto-up player:', {
-            id: newCheckin.id,
-            username: autoUpPlayer.username,
-            gameId: newCheckin.gameId,
-            team: newCheckin.team
-          });
-
-          // Add auto-up player to game
-          await this.createGamePlayer(
-            currentCheckin.gameId,
-            autoUpPlayer.id,
-            currentCheckin.team
-          );
-
-          // Update queue position
-          await db
-            .update(gameSets)
-            .set({
-              queueNextUp: activeGameSet.queueNextUp + 1
-            })
-            .where(eq(gameSets.id, activeGameSet.id));
-
-          console.log(`Added auto-up player ${autoUpPlayer.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
-          return;
-        } catch (error) {
-          console.error('Error replacing with auto-up player:', error);
-          throw error;
-        }
-      }
-
-      console.log('No replacement found - neither queue nor auto-up players available');
-      throw new Error('No replacement player available');
     }
   }
+
+  private async handleGamePlayerCheckout(
+    currentCheckin: { id: number; gameId: number; team: number; queuePosition: number; username: string },
+    activeGameSet: GameSet
+  ): Promise<void> {
+    // Get the next player in queue
+    const [nextPlayerCheckin] = await db
+      .select({
+        id: checkins.id,
+        userId: checkins.userId,
+        username: users.username,
+        queuePosition: checkins.queuePosition
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(
+        and(
+          eq(checkins.isActive, true),
+          eq(checkins.gameId, null),
+          eq(checkins.gameSetId, activeGameSet.id)
+        )
+      )
+      .orderBy(checkins.queuePosition)
+      .limit(1);
+
+    // Deactivate current player's checkin
+    await db
+      .update(checkins)
+      .set({ isActive: false })
+      .where(eq(checkins.id, currentCheckin.id));
+    console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username}`);
+
+    if (nextPlayerCheckin) {
+      // Add next player to game
+      await this.createGamePlayer(
+        currentCheckin.gameId,
+        nextPlayerCheckin.userId,
+        currentCheckin.team
+      );
+      console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
+
+      // Update next player's checkin
+      await db
+        .update(checkins)
+        .set({
+          gameId: currentCheckin.gameId,
+          team: currentCheckin.team
+        })
+        .where(eq(checkins.id, nextPlayerCheckin.id));
+    }
+  }
+
+  private async handleQueuePlayerCheckout(
+    currentCheckin: { id: number; queuePosition: number; username: string },
+    activeGameSet: GameSet
+  ): Promise<void> {
+    console.log(`Handling queue player checkout for ${currentCheckin.username}`);
+
+    // Deactivate the checkin
+    await db
+      .update(checkins)
+      .set({ isActive: false })
+      .where(eq(checkins.id, currentCheckin.id));
+    console.log(`Deactivated checkin ${currentCheckin.id}`);
+
+    // Update queue positions for players after this one
+    await db
+      .update(checkins)
+      .set({
+        queuePosition: sql`${checkins.queuePosition} - 1`
+      })
+      .where(
+        and(
+          eq(checkins.isActive, true),
+          eq(checkins.gameSetId, activeGameSet.id),
+          eq(checkins.checkInDate, getDateString(getCentralTime())),
+          gt(checkins.queuePosition, currentCheckin.queuePosition)
+        )
+      );
+    console.log(`Updated queue positions after position ${currentCheckin.queuePosition}`);
+
+    // Decrement game set's queue_next_up
+    await db
+      .update(gameSets)
+      .set({
+        queueNextUp: sql`${gameSets.queueNextUp} - 1`
+      })
+      .where(eq(gameSets.id, activeGameSet.id));
+    console.log('Decremented game set queue_next_up');
+  }
+
 }
 
 export const storage = new DatabaseStorage();
