@@ -171,6 +171,49 @@ export default function HomePage() {
     }
   };
 
+  // Function to handle ending the entire game set
+  const handleEndSet = async (gameSetId: number) => {
+    if (!window.confirm("Are you sure you want to end this game set? This will deactivate the set and all associated check-ins.")) {
+      return;
+    }
+    
+    try {
+      console.log(`Ending game set ${gameSetId}`);
+      const response = await fetch(`/api/game-sets/${gameSetId}/deactivate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to deactivate game set');
+      }
+
+      console.log('Game set deactivated successfully, refreshing data...');
+
+      // Invalidate and refresh all relevant queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/games/active"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/checkins"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets"], exact: true })
+      ]);
+
+      // Force an immediate refetch of the data
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["/api/games/active"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/checkins"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/game-sets"], exact: true })
+      ]);
+
+    } catch (error) {
+      console.error('Error ending game set:', error);
+      alert(`Failed to end game set: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   const renderGameCard = (game: any, showScoreInputs = true) => (
     <Card key={game.id} className="bg-secondary/20">
       <CardHeader className="pb-2">
@@ -328,12 +371,23 @@ export default function HomePage() {
                     )}
                   </CardTitle>
                   {canEndGames && (
-                    <Button 
-                      onClick={() => setLocation("/games?tab=new-game")}
-                      variant="outline"
-                    >
-                      New Game
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => setLocation("/games?tab=new-game")}
+                        variant="outline"
+                      >
+                        New Game
+                      </Button>
+                      {activeGameSet && (
+                        <Button 
+                          onClick={() => handleEndSet(activeGameSet.id)}
+                          variant="outline"
+                          className="bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+                        >
+                          End Set
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </CardHeader>
