@@ -870,10 +870,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(checkins.queuePosition)
       .limit(1);
 
-    // Deactivate current player's checkin
+    // Deactivate current player's checkin and set queue_position to 0
     await db
       .update(checkins)
-      .set({ isActive: false })
+      .set({ 
+        isActive: false,
+        queuePosition: 0 
+      })
       .where(eq(checkins.id, currentCheckin.id));
     console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username}`);
 
@@ -889,8 +892,7 @@ export class DatabaseStorage implements IStorage {
       if (currentCheckin.team === 1) {
         // For Home team: 
         // 1. Next player inherits the checked out player's position
-        // 2. Decrement positions for remaining Next Up players
-        // 3. Update queue_next_up
+        // 2. Only decrement positions for players after the next player's original position
         console.log('Home team checkout - replacing player and updating Next Up positions');
 
         // Update next player's checkin with game and team, inheriting position
@@ -903,7 +905,7 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(checkins.id, nextPlayerCheckin.id));
 
-        // Decrement positions for remaining Next Up players
+        // Decrement positions only for remaining Next Up players after nextPlayerCheckin
         await db
           .update(checkins)
           .set({
@@ -929,8 +931,7 @@ export class DatabaseStorage implements IStorage {
 
         console.log('Updated Next Up positions and decremented queue_next_up');
       } else {
-        // For Away team:
-        // Keep existing behavior where everyone shifts up
+        // For Away team: Keep existing behavior where everyone shifts up
         console.log('Away team checkout - shifting all positions up');
 
         await db
@@ -942,7 +943,7 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(checkins.id, nextPlayerCheckin.id));
 
-        // Update queue positions for players after the next player
+        // Update queue positions for all players after the next player
         await db
           .update(checkins)
           .set({
@@ -977,7 +978,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     console.log(`Handling queue player checkout for ${currentCheckin.username}`);
 
-        // Deactivate the checkin
+    // Deactivate the checkin
     await db
       .update(checkins)
       .set({ isActive: false })
