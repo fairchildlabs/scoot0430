@@ -806,6 +806,10 @@ export class DatabaseStorage implements IStorage {
       team: currentCheckin.team
     });
 
+    // Log all active checkins before deactivation
+    const beforeCheckins = await this.getCurrentCheckinsState();
+    console.log('Checkins before deactivation:', beforeCheckins);
+
     // First deactivate current player's checkin and explicitly set queue_position to 0
     await db
       .update(checkins)
@@ -817,29 +821,35 @@ export class DatabaseStorage implements IStorage {
 
     console.log(`Deactivated HOME player checkin ${currentCheckin.id} and set queue_position to 0`);
 
-    // Get the next available player (first in Next Up)
-    const [nextPlayerCheckin] = await db
+    // Get all active checkins after current player's position
+    const availablePlayers = await db
       .select({
         id: checkins.id,
         userId: checkins.userId,
         username: users.username,
-        queuePosition: checkins.queuePosition
+        queuePosition: checkins.queuePosition,
+        isActive: checkins.isActive,
+        gameId: checkins.gameId
       })
       .from(checkins)
       .innerJoin(users, eq(checkins.userId, users.id))
       .where(
         and(
           eq(checkins.isActive, true),
-          eq(checkins.gameId, null),
-          eq(checkins.checkInDate, getDateString(getCentralTime()))
+          eq(checkins.checkInDate, getDateString(getCentralTime())),
+          gt(checkins.queuePosition, checkedOutPosition) // Only players after the checked out position
         )
       )
-      .orderBy(checkins.queuePosition)
-      .limit(1);
+      .orderBy(checkins.queuePosition);
 
-    if (!nextPlayerCheckin) {
-      throw new Error('No available player for replacement');
+    console.log('Available players for replacement:', availablePlayers);
+
+    if (availablePlayers.length === 0) {
+      throw new Error('No available players found after position ' + checkedOutPosition);
     }
+
+    // Take the first available player as the next player
+    const nextPlayerCheckin = availablePlayers[0];
 
     // Store next player's original position for decrementing logic
     const nextPlayerOriginalPosition = nextPlayerCheckin.queuePosition;
@@ -877,8 +887,7 @@ export class DatabaseStorage implements IStorage {
           eq(checkins.isActive, true),
           eq(checkins.gameSetId, activeGameSet.id),
           eq(checkins.checkInDate, getDateString(getCentralTime())),
-          gt(checkins.queuePosition, nextPlayerOriginalPosition),
-          eq(checkins.gameId, null) // Only update Next Up players
+          gt(checkins.queuePosition, nextPlayerOriginalPosition)
         )
       );
 
@@ -891,6 +900,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(gameSets.id, activeGameSet.id));
 
     console.log('HOME team checkout complete - Updated Next Up positions and decremented queue_next_up');
+
+    // Log final state
+    console.log('Final checkins state:', await this.getCurrentCheckinsState());
   }
 
   private async handleAwayTeamCheckout(
@@ -904,8 +916,7 @@ export class DatabaseStorage implements IStorage {
 
     // First deactivate current player's checkin and explicitly set queue_position to 0    await db
     await db
-      .update(checkins)
-      .set({
+      .update(checkins)      .set({
         isActive: false,
         queuePosition: 0
       })
@@ -921,7 +932,8 @@ export class DatabaseStorage implements IStorage {
         queuePosition: checkins.queuePosition
       })
       .from(checkins)
-      .innerJoin(users, eq(checkins.userId, users.id))      .where(
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(
         and(
           eq(checkins.isActive, true),
           eq(checkins.gameId, null),
@@ -1375,6 +1387,10 @@ export class DatabaseStorage implements IStorage {
       team: currentCheckin.team
     });
 
+    // Log all active checkins before deactivation
+    const beforeCheckins = await this.getCurrentCheckinsState();
+    console.log('Checkins before deactivation:', beforeCheckins);
+
     // First deactivate current player's checkin and explicitly set queue_position to 0
     await db
       .update(checkins)
@@ -1386,29 +1402,35 @@ export class DatabaseStorage implements IStorage {
 
     console.log(`Deactivated HOME player checkin ${currentCheckin.id} and set queue_position to 0`);
 
-    // Get the next available player (first in Next Up)
-    const [nextPlayerCheckin] = await db
+    // Get all active checkins after current player's position
+    const availablePlayers = await db
       .select({
         id: checkins.id,
         userId: checkins.userId,
         username: users.username,
-        queuePosition: checkins.queuePosition
+        queuePosition: checkins.queuePosition,
+        isActive: checkins.isActive,
+        gameId: checkins.gameId
       })
       .from(checkins)
       .innerJoin(users, eq(checkins.userId, users.id))
       .where(
         and(
           eq(checkins.isActive, true),
-          eq(checkins.gameId, null),
-          eq(checkins.checkInDate, getDateString(getCentralTime()))
+          eq(checkins.checkInDate, getDateString(getCentralTime())),
+          gt(checkins.queuePosition, checkedOutPosition) // Only players after the checked out position
         )
       )
-      .orderBy(checkins.queuePosition)
-      .limit(1);
+      .orderBy(checkins.queuePosition);
 
-    if (!nextPlayerCheckin) {
-      throw new Error('No available player for replacement');
+    console.log('Available players for replacement:', availablePlayers);
+
+    if (availablePlayers.length === 0) {
+      throw new Error('No available players found after position ' + checkedOutPosition);
     }
+
+    // Take the first available player as the next player
+    const nextPlayerCheckin = availablePlayers[0];
 
     // Store next player's original position for decrementing logic
     const nextPlayerOriginalPosition = nextPlayerCheckin.queuePosition;
@@ -1446,8 +1468,7 @@ export class DatabaseStorage implements IStorage {
           eq(checkins.isActive, true),
           eq(checkins.gameSetId, activeGameSet.id),
           eq(checkins.checkInDate, getDateString(getCentralTime())),
-          gt(checkins.queuePosition, nextPlayerOriginalPosition),
-          eq(checkins.gameId, null) // Only update Next Up players
+          gt(checkins.queuePosition, nextPlayerOriginalPosition)
         )
       );
 
@@ -1460,6 +1481,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(gameSets.id, activeGameSet.id));
 
     console.log('HOME team checkout complete - Updated Next Up positions and decremented queue_next_up');
+
+    // Log final state
+    console.log('Final checkins state:', await this.getCurrentCheckinsState());
   }
 
   private async handleAwayTeamCheckout(
