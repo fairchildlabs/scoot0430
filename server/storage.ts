@@ -1227,6 +1227,15 @@ export class DatabaseStorage implements IStorage {
           .where(eq(checkins.id, nextUpPlayer.id));
 
         console.log(`BUMP operation completed successfully`);
+        
+        return {
+          message: `${currentCheckin.username} bumped with ${nextUpPlayer.username}`,
+          details: { 
+            player1: { username: currentCheckin.username, from: teamPlayerPosition, to: nextUpPlayerPosition },
+            player2: { username: nextUpPlayer.username, from: nextUpPlayerPosition, to: teamPlayerPosition },
+            moveType
+          }
+        };
       } else {
         // Handle bumping within the NEXT_UP queue (swap with the next player)
         console.log(`Processing NEXT_UP bump for ${currentCheckin.username}:`, {
@@ -1303,11 +1312,120 @@ export class DatabaseStorage implements IStorage {
           .where(eq(checkins.id, playerToSwap.id));
 
         console.log(`NEXT_UP BUMP operation completed successfully`);
+        
+        return {
+          message: `${currentCheckin.username} bumped with ${playerToSwap.username}`,
+          details: { 
+            player1: { username: currentCheckin.username, from: currentPosition, to: nextPosition },
+            player2: { username: playerToSwap.username, from: nextPosition, to: currentPosition },
+            moveType
+          }
+        };
       }
 
       // Log final state
       const finalState = await this.getCurrentCheckinsState();
       console.log('Final checkins state after BUMP:', finalState);
+    } else if (isMoveType(moveType, 'VERTICAL_SWAP')) {
+      // VERTICAL_SWAP is only applicable for AWAY team players
+      if (playerPosition !== 'AWAY') {
+        console.log(`VERTICAL_SWAP not applicable for ${playerPosition} player ${currentCheckin.username}`);
+        return {
+          message: `VERTICAL_SWAP not applicable for ${playerPosition} player ${currentCheckin.username}`,
+          details: {}
+        };
+      }
+      
+      // Calculate AWAY team range
+      const awayTeamStart = activeGameSet.currentQueuePosition + activeGameSet.playersPerTeam;
+      const awayTeamEnd = awayTeamStart + activeGameSet.playersPerTeam - 1;
+      
+      // Calculate the player's position within the AWAY team
+      const playerAwayIndex = currentCheckin.queuePosition - awayTeamStart;
+      const nextPlayerIndex = (playerAwayIndex + 1) % activeGameSet.playersPerTeam;
+      const nextPlayerPosition = awayTeamStart + nextPlayerIndex;
+      
+      console.log("Processing VERTICAL_SWAP for AWAY player:", {
+        username: currentCheckin.username,
+        currentPosition: currentCheckin.queuePosition,
+        relativeAwayPosition: playerAwayIndex + 1, // 1-indexed display
+        nextPlayerRelativePosition: nextPlayerIndex + 1, // 1-indexed display
+        nextPlayerPosition
+      });
+      
+      // Get the player to swap with
+      const swapPlayers = await db
+        .select({
+          id: checkins.id,
+          userId: checkins.userId,
+          username: users.username,
+          queuePosition: checkins.queuePosition
+        })
+        .from(checkins)
+        .innerJoin(users, eq(checkins.userId, users.id))
+        .where(
+          and(
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id),
+            eq(checkins.checkInDate, getDateString(getCentralTime())),
+            eq(checkins.queuePosition, nextPlayerPosition)
+          )
+        );
+      
+      if (swapPlayers.length === 0) {
+        console.log(`No player found at position ${nextPlayerPosition} for VERTICAL_SWAP`);
+        return {
+          message: `No player found at position ${nextPlayerPosition} for vertical swap`,
+          details: {}
+        };
+      }
+      
+      const playerToSwap = swapPlayers[0];
+      console.log("Vertical swap between:", {
+        current: {
+          username: currentCheckin.username,
+          position: currentCheckin.queuePosition
+        },
+        next: {
+          username: playerToSwap.username,
+          position: playerToSwap.queuePosition
+        }
+      });
+      
+      // Perform the swap
+      const currentPosition = currentCheckin.queuePosition;
+      const swapPosition = playerToSwap.queuePosition;
+      
+      // Update current player position
+      await db
+        .update(checkins)
+        .set({
+          queuePosition: swapPosition
+        })
+        .where(eq(checkins.id, currentCheckin.id));
+      
+      // Update swap player position
+      await db
+        .update(checkins)
+        .set({
+          queuePosition: currentPosition
+        })
+        .where(eq(checkins.id, playerToSwap.id));
+      
+      console.log("VERTICAL_SWAP completed successfully");
+      
+      // Log final state
+      const finalState = await this.getCurrentCheckinsState();
+      console.log("Final checkins state after VERTICAL_SWAP:", finalState);
+      
+      return {
+        message: `${currentCheckin.username} swapped with ${playerToSwap.username}`,
+        details: {
+          player1: { username: currentCheckin.username, from: currentPosition, to: swapPosition },
+          player2: { username: playerToSwap.username, from: swapPosition, to: currentPosition },
+          moveType: "VERTICAL_SWAP"
+        }
+      };
     } else if (isMoveType(moveType, 'HORIZONTAL_SWAP')) {
       if (playerPosition === 'HOME') {
         console.log(`Processing HOME team HORIZONTAL_SWAP for ${currentCheckin.username}:`, {
@@ -1475,17 +1593,78 @@ export class DatabaseStorage implements IStorage {
       const finalState = await this.getCurrentCheckinsState();
       console.log('Final checkins state after HORIZONTAL_SWAP:', finalState);
       
-      return {
-        message: `Successfully swapped ${currentCheckin.username}'s position horizontally`,
-        details: { player: currentCheckin.username, moveType: "HORIZONTAL_SWAP" }
-      };
+      // Return appropriate message based on whether HOME or AWAY initiated the swap
+      if (playerPosition === 'HOME') {
+        const awayPlayer = await db
+          .select({
+            username: users.username
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              eq(checkins.queuePosition, currentCheckin.queuePosition + activeGameSet.playersPerTeam)
+            )
+          );
+          
+        const awayPlayerName = awayPlayer.length > 0 ? awayPlayer[0].username : "another player";
+        return {
+          message: `${currentCheckin.username} swapped with ${awayPlayerName}`,
+          details: { 
+            homePlayer: { username: currentCheckin.username, fromPos: relativePosition, toPos: relativePosition + activeGameSet.playersPerTeam },
+            awayPlayer: { username: awayPlayerName, fromPos: relativePosition + activeGameSet.playersPerTeam, toPos: relativePosition },
+            moveType: "HORIZONTAL_SWAP" 
+          }
+        };
+      } else {
+        const homePlayer = await db
+          .select({
+            username: users.username
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              eq(checkins.queuePosition, currentCheckin.queuePosition - activeGameSet.playersPerTeam)
+            )
+          );
+          
+        const homePlayerName = homePlayer.length > 0 ? homePlayer[0].username : "another player";
+        return {
+          message: `${currentCheckin.username} swapped with ${homePlayerName}`,
+          details: { 
+            awayPlayer: { username: currentCheckin.username, fromPos: relativePosition, toPos: relativePosition - activeGameSet.playersPerTeam },
+            homePlayer: { username: homePlayerName, fromPos: relativePosition - activeGameSet.playersPerTeam, toPos: relativePosition },
+            moveType: "HORIZONTAL_SWAP" 
+          }
+        };
+      }
     }
     
-    // If we reach here, it means a checkout or bump operation completed successfully
-    return {
-      message: `Successfully processed ${moveType} for ${currentCheckin.username}`,
-      details: { player: currentCheckin.username, moveType }
-    };
+    // If we reach here, it means a checkout operation completed successfully
+    if (isMoveType(moveType, 'CHECKOUT')) {
+      return {
+        message: `${currentCheckin.username} checked out successfully`,
+        details: { player: currentCheckin.username, moveType }
+      };
+    } else if (isMoveType(moveType, 'BUMP')) {
+      // Bump messages are returned from the specific blocks
+      return {
+        message: `Error: Unhandled BUMP operation for ${currentCheckin.username}`,
+        details: { player: currentCheckin.username, moveType }
+      };
+    } else {
+      return {
+        message: `Successfully processed ${moveType} for ${currentCheckin.username}`,
+        details: { player: currentCheckin.username, moveType }
+      };
+    }
   }
 
   // Helper method to get formatted checkin state - renamed to be more specific
