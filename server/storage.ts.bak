@@ -1006,13 +1006,10 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     console.log(`Handling queue player checkout for ${currentCheckin.username}`);
 
-    // Deactivate the checkin and set queue position to 0
+    // Deactivate the checkin
     await db
       .update(checkins)
-      .set({ 
-        isActive: false,
-        queuePosition: 0
-      })
+      .set({ isActive: false })
       .where(eq(checkins.id, currentCheckin.id));
     console.log(`Deactivated checkin ${currentCheckin.id}`);
 
@@ -1614,13 +1611,10 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     console.log(`Handling queue player checkout for ${currentCheckin.username}`);
 
-    // Deactivate the checkin and set queue position to 0
+    // Deactivate the checkin
     await db
       .update(checkins)
-      .set({ 
-        isActive: false,
-        queuePosition: 0
-      })
+      .set({ isActive: false })
       .where(eq(checkins.id, currentCheckin.id));
     console.log(`Deactivated checkin ${currentCheckin.id}`);
 
