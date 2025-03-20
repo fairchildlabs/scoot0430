@@ -796,7 +796,7 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  private async handleHomeTeamCheckout(
+  async handleHomeTeamCheckout(
     currentCheckin: { id: number; queuePosition: number; username: string; gameId: number; team: number },
     activeGameSet: GameSet
   ): Promise<void> {
@@ -910,7 +910,7 @@ export class DatabaseStorage implements IStorage {
     console.log('Final checkins state:', await this.getCurrentCheckinsState());
   }
 
-  private async handleAwayTeamCheckout(
+  async handleAwayTeamCheckout(
     currentCheckin: { id: number; gameId: number; team: number; queuePosition: number; username: string },
     activeGameSet: GameSet
   ): Promise<void> {
@@ -1000,7 +1000,7 @@ export class DatabaseStorage implements IStorage {
     console.log('Updated queue positions and decremented next_up for Away team checkout');
   }
 
-  private async handleQueuePlayerCheckout(
+  async handleQueuePlayerCheckout(
     currentCheckin: { id: number; queuePosition: number; username: string },
     activeGameSet: GameSet
   ): Promise<void> {
@@ -1380,7 +1380,7 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  private async handleHomeTeamCheckout(
+  async handleHomeTeamCheckout(
     currentCheckin: { id: number; queuePosition: number; username: string; gameId: number; team: number },
     activeGameSet: GameSet
   ): Promise<void> {
@@ -1499,7 +1499,7 @@ export class DatabaseStorage implements IStorage {
     console.log("Final checkins state:", await this.getCurrentCheckinsState());
   }
 
-  private async handleAwayTeamCheckout(
+  async handleAwayTeamCheckout(
     currentCheckin: { id: number; gameId: number; team: number; queuePosition: number; username: string },
     activeGameSet: GameSet
   ): Promise<void> {
@@ -1606,166 +1606,6 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(gameSets.id, activeGameSet.id));
     console.log('Updated queue positions and decremented next_up for Away team checkout');
-  }
-
-  private async handleQueuePlayerCheckout(
-    currentCheckin: { id: number; queuePosition: number; username: string },
-    activeGameSet: GameSet
-  ): Promise<void> {
-    console.log(`Handling queue player checkout for ${currentCheckin.username}`);
-
-    // Deactivate the checkin and set queue position to 0
-    await db
-      .update(checkins)
-      .set({ 
-        isActive: false,
-        queuePosition: 0
-      })
-      .where(eq(checkins.id, currentCheckin.id));
-    console.log(`Deactivated checkin ${currentCheckin.id}`);
-
-    // Update queue positions for players after this one
-    await db
-      .update(checkins)
-      .set({
-        queuePosition: sql`${checkins.queuePosition} - 1`
-      })
-      .where(
-        and(
-          eq(checkins.isActive, true),
-          eq(checkins.gameSetId, activeGameSet.id),
-          eq(checkins.checkInDate, getDateString(getCentralTime())),
-          gt(checkins.queuePosition, currentCheckin.queuePosition)
-        )
-      );
-    console.log(`Updated queue positions after position ${currentCheckin.queuePosition}`);
-
-    // Decrement game set's queue_next_up
-    await db
-      .update(gameSets)
-      .set({
-        queueNextUp: sql`${gameSets.queueNextUp} - 1`
-      })
-      .where(eq(gameSets.id, activeGameSet.id));
-    console.log('Decremented game set queue_next_up');
-  }
-
-  async handlePlayerMove(userId: number, moveType: string): Promise<void> {
-    console.log(`Handling player move:`, { userId, moveType });
-
-    // Get active game set first
-    const activeGameSet = await this.getActiveGameSet();
-    if (!activeGameSet) {
-      throw new Error('No active game set found');
-    }
-
-    // Get current checkin details
-    const [currentCheckin] = await db
-      .select({
-        id: checkins.id,
-        username: users.username,
-        gameId: checkins.gameId,
-        team: checkins.team,
-        queuePosition: checkins.queuePosition,
-        isActive: checkins.isActive
-      })
-      .from(checkins)
-      .innerJoin(users, eq(checkins.userId, users.id))
-      .where(
-        and(
-          eq(checkins.userId, userId),
-          eq(checkins.isActive, true),
-          eq(checkins.checkInDate, getDateString(getCentralTime()))
-        )
-      );
-
-    if (!currentCheckin) {
-      throw new Error(`No active checkin found for user ${userId}`);
-    }
-
-    // Log initial state
-    const initialState = await this.getCurrentCheckinsState();
-    console.log('Initial checkins state:', initialState);
-    console.log('Active game set:', {
-      id: activeGameSet.id,
-      currentQueuePosition: activeGameSet.currentQueuePosition
-    });
-
-    // Calculate relative position (1-based) from game set start
-    const relativePosition = currentCheckin.queuePosition - activeGameSet.currentQueuePosition + 1;
-
-    console.log('Position detection:', {
-      username: currentCheckin.username,
-      absolutePosition: currentCheckin.queuePosition,
-      gameSetStart: activeGameSet.currentQueuePosition,
-      relativePosition
-    });
-
-    // Determine position type based on relative position in current game set
-    let playerPosition;
-    if (relativePosition >= 1 && relativePosition <= 4) {
-      playerPosition = 'HOME';
-    } else if (relativePosition >= 5 && relativePosition <= 8) {
-      playerPosition = 'AWAY';
-    } else {
-      playerPosition = 'NEXT_UP';
-    }
-
-    console.log(`Detected ${playerPosition} position for ${currentCheckin.username}`);
-
-    if (isMoveType(moveType, 'CHECKOUT')) {
-      if (playerPosition === 'HOME') {
-        console.log(`Processing HOME team checkout for ${currentCheckin.username}:`, {
-          checkinId: currentCheckin.id,
-          queuePosition: currentCheckin.queuePosition,
-          relativePosition
-        });
-        await this.handleHomeTeamCheckout(currentCheckin, activeGameSet);
-      } else if (playerPosition === 'AWAY') {
-        console.log(`Processing AWAY team checkout for ${currentCheckin.username}:`, {
-          checkinId: currentCheckin.id,
-          queuePosition: currentCheckin.queuePosition,
-          relativePosition
-        });
-        await this.handleAwayTeamCheckout(currentCheckin, activeGameSet);
-      } else {
-        console.log(`Processing NEXT_UP checkout for ${currentCheckin.username}:`, {
-          checkinId: currentCheckin.id,
-          queuePosition: currentCheckin.queuePosition,
-          relativePosition
-        });
-        await this.handleQueuePlayerCheckout(currentCheckin, activeGameSet);
-      }
-
-      // Log final state
-      const finalState = await this.getCurrentCheckinsState();
-      console.log('Final checkins state:', finalState);
-    }
-  }
-
-  // Helper method to get formatted checkin state - renamed to be more specific
-  private async getCurrentCheckinsState() {
-    const currentCheckins = await db
-      .select({
-        id: checkins.id,
-        username: users.username,
-        queuePosition: checkins.queuePosition,
-        isActive: checkins.isActive,
-        gameId: checkins.gameId,
-        team: checkins.team
-      })
-      .from(checkins)
-      .innerJoin(users, eq(checkins.userId, users.id))
-      .where(eq(checkins.checkInDate, getDateString(getCentralTime())))
-      .orderBy(checkins.queuePosition);
-
-    return currentCheckins.map(c => ({
-      username: c.username,
-      pos: c.queuePosition,
-      active: c.isActive,
-      gameId: c.gameId,
-      team: c.team
-    }));
   }
 
 }
