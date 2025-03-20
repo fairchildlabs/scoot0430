@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { insertGameSetSchema, games, checkins, users, gameSets, gamePlayers } from "@shared/schema";
 import { populateGame, movePlayer, type MoveType } from "./game-logic/game-population";
 import { db } from "./db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, asc } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
