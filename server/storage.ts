@@ -362,7 +362,7 @@ export class DatabaseStorage implements IStorage {
             .from(checkins)
             .where(eq(checkins.isActive, true));
           
-          let nextPosition = highestPosition?.maxPosition ? highestPosition.maxPosition + 1 : activeGameSet.currentQueuePosition;
+          let nextPosition = (highestPosition?.maxPosition as number) ? (highestPosition.maxPosition as number) + 1 : activeGameSet.currentQueuePosition;
           
           // Create new checkins for autoup users
           for (const user of autoUpUsers) {
@@ -461,7 +461,7 @@ export class DatabaseStorage implements IStorage {
     return player;
   }
 
-  async getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number })[] }> {
+  async getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number | null })[] }> {
     // Get the game
     const gameResults = await db
       .select()
@@ -518,8 +518,8 @@ export class DatabaseStorage implements IStorage {
     
     // Sort by team first, then by queue position
     const sortedPlayers = playersWithPositions.sort((a, b) => {
-      if (a.team !== b.team) return a.team - b.team;
-      return a.queuePosition - b.queuePosition;
+      if (a.team !== b.team) return (a.team || 0) - (b.team || 0);
+      return (a.queuePosition || 0) - (b.queuePosition || 0);
     });
     
     return {
