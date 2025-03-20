@@ -1132,6 +1132,162 @@ export class DatabaseStorage implements IStorage {
       // Log final state
       const finalState = await this.getCurrentCheckinsState();
       console.log('Final checkins state:', finalState);
+    } else if (isMoveType(moveType, 'BUMP')) {
+      if (playerPosition === 'HOME' || playerPosition === 'AWAY') {
+        console.log(`Processing ${playerPosition} team BUMP for ${currentCheckin.username}:`, {
+          checkinId: currentCheckin.id,
+          queuePosition: currentCheckin.queuePosition,
+          relativePosition
+        });
+        
+        // Find the first NEXT_UP player
+        const playersPerTeam = activeGameSet.playersPerTeam;
+        const nextUpMinPosition = activeGameSet.currentQueuePosition + (playersPerTeam * 2);
+
+        // Find the first available NEXT_UP player
+        const nextUpPlayers = await db
+          .select({
+            id: checkins.id,
+            userId: checkins.userId,
+            username: users.username,
+            queuePosition: checkins.queuePosition
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              gte(checkins.queuePosition, nextUpMinPosition)
+            )
+          )
+          .orderBy(checkins.queuePosition);
+
+        if (nextUpPlayers.length === 0) {
+          console.log('No NEXT_UP players available for BUMP');
+          return;
+        }
+
+        // Get the first NEXT_UP player
+        const nextUpPlayer = nextUpPlayers[0];
+        console.log(`Found NEXT_UP player for BUMP:`, {
+          username: nextUpPlayer.username,
+          queuePosition: nextUpPlayer.queuePosition
+        });
+
+        // Swap positions between the team player and the first NEXT_UP player
+        const teamPlayerPosition = currentCheckin.queuePosition;
+        const nextUpPlayerPosition = nextUpPlayer.queuePosition;
+
+        console.log(`Swapping positions:`, {
+          teamPlayer: {
+            username: currentCheckin.username,
+            from: teamPlayerPosition,
+            to: nextUpPlayerPosition
+          },
+          nextUpPlayer: {
+            username: nextUpPlayer.username,
+            from: nextUpPlayerPosition,
+            to: teamPlayerPosition
+          }
+        });
+
+        // Update the team player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: nextUpPlayerPosition
+          })
+          .where(eq(checkins.id, currentCheckin.id));
+
+        // Update the NEXT_UP player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: teamPlayerPosition
+          })
+          .where(eq(checkins.id, nextUpPlayer.id));
+
+        console.log(`BUMP operation completed successfully`);
+      } else {
+        // Handle bumping within the NEXT_UP queue (swap with the next player)
+        console.log(`Processing NEXT_UP bump for ${currentCheckin.username}:`, {
+          checkinId: currentCheckin.id,
+          queuePosition: currentCheckin.queuePosition
+        });
+
+        // Find the next player in the queue
+        const nextPlayer = await db
+          .select({
+            id: checkins.id,
+            userId: checkins.userId,
+            username: users.username,
+            queuePosition: checkins.queuePosition
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              gt(checkins.queuePosition, currentCheckin.queuePosition)
+            )
+          )
+          .orderBy(checkins.queuePosition)
+          .limit(1);
+
+        if (nextPlayer.length === 0) {
+          console.log('No player after this one in queue for BUMP');
+          return;
+        }
+
+        const playerToSwap = nextPlayer[0];
+        console.log(`Found next player for BUMP:`, {
+          username: playerToSwap.username,
+          queuePosition: playerToSwap.queuePosition
+        });
+
+        // Swap positions between the current NEXT_UP player and the next one
+        const currentPosition = currentCheckin.queuePosition;
+        const nextPosition = playerToSwap.queuePosition;
+
+        console.log(`Swapping positions:`, {
+          currentPlayer: {
+            username: currentCheckin.username,
+            from: currentPosition,
+            to: nextPosition
+          },
+          nextPlayer: {
+            username: playerToSwap.username,
+            from: nextPosition,
+            to: currentPosition
+          }
+        });
+
+        // Update the current player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: nextPosition
+          })
+          .where(eq(checkins.id, currentCheckin.id));
+
+        // Update the next player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: currentPosition
+          })
+          .where(eq(checkins.id, playerToSwap.id));
+
+        console.log(`NEXT_UP BUMP operation completed successfully`);
+      }
+
+      // Log final state
+      const finalState = await this.getCurrentCheckinsState();
+      console.log('Final checkins state after BUMP:', finalState);
     }
   }
 
