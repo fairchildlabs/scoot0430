@@ -1,5 +1,5 @@
 // Import dependencies
-import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, notInArray, or, sql } from "drizzle-orm";
 import session from "express-session";
 import PgSession from "connect-pg-simple";
 import { SessionOptions } from "express-session";
@@ -295,11 +295,32 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Deactivate checkins for this game
-    await db
-      .update(checkins)
-      .set({ isActive: false })
-      .where(eq(checkins.gameId, gameId));
+    // Deactivate checkins for players who aren't being promoted
+    // We need to keep the promoted players active, but deactivate the rest
+    if (promotionInfo) {
+      const promotedUserIds = promotedPlayers.map(p => p.userId);
+      
+      // Only deactivate players from this game who aren't in the promoted list
+      await db
+        .update(checkins)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(checkins.gameId, gameId),
+            notInArray(checkins.userId, promotedUserIds)
+          )
+        );
+      
+      console.log(`Deactivated checkins for non-promoted players from game ${gameId}`);
+    } else {
+      // If there's no promotion, deactivate all checkins for this game
+      await db
+        .update(checkins)
+        .set({ isActive: false })
+        .where(eq(checkins.gameId, gameId));
+        
+      console.log(`Deactivated all checkins for game ${gameId} (no promotion)`);
+    }
       
     // Get all auto-up eligible players and create new active checkins for them
     console.log('Finding auto-up players:', {
