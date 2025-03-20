@@ -190,25 +190,39 @@ const NewGamePage = () => {
     mutationFn: async ({ playerId, moveType, playerNumber }: { playerId: number, moveType: string, playerNumber: number }) => {
       if (!activeGameSet) throw new Error("No active game set");
 
-      const res = await apiRequest("POST", "/api/player-move", {
-        playerId,
-        moveType,
-        setId: activeGameSet.id
-      });
+      try {
+        const res = await apiRequest("POST", "/api/player-move", {
+          playerId,
+          moveType,
+          setId: activeGameSet.id
+        });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText || "Failed to process player move");
+        }
+        return { ...(await res.json()), playerNumber };
+      } catch (error) {
+        console.error('Player move error:', error);
+        throw error;
       }
-      return { ...(await res.json()), playerNumber };
     },
     onSuccess: (data) => {
+      // Invalidate relevant queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
-      setStatusMessage(`Player #${data.playerNumber} moved successfully`);
+      queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] });
+
+      setStatusMessage(`Player #${data.playerNumber} checked out successfully`);
+
+      // Clear status message after 3 seconds
+      setTimeout(() => setStatusMessage(''), 3000);
     },
     onError: (error: Error) => {
       console.error('Player move failed:', error);
       setStatusMessage(`Error: ${error.message}`);
+
+      // Clear error message after 5 seconds
+      setTimeout(() => setStatusMessage(''), 5000);
     }
   });
 
@@ -366,14 +380,22 @@ const NewGamePage = () => {
           <Button
             size="icon"
             variant="outline"
-            className="rounded-full h-8 w-8 border-white text-white hover:text-white"
+            className="rounded-full h-8 w-8 border-white text-white hover:text-white relative"
             onClick={() => {
               const playerNumber = player.queuePosition;
-              playerMoveMutation.mutate({ playerId: player.userId, moveType: 'CHECKOUT', playerNumber });
+              playerMoveMutation.mutate({
+                playerId: player.userId,
+                moveType: 'CHECKOUT',
+                playerNumber
+              });
             }}
             disabled={playerMoveMutation.isPending}
           >
-            {playerMoveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            {playerMoveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin absolute" />
+            ) : (
+              <X className="h-4 w-4" />
+            )}
           </Button>
           <Button
             size="icon"

@@ -1,15 +1,11 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { pool } from "./db";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
-// Add an unprotected test route
-app.get('/test', (_req, res) => {
-  res.send('Hello World - Test Route');
-});
 
 // Add detailed error logging
 app.use((req, res, next) => {
@@ -29,6 +25,11 @@ app.use((req, res, next) => {
 (async () => {
   try {
     console.log('Starting server initialization...');
+
+    // Test database connection before proceeding
+    await pool.connect();
+    console.log('Database connection successful');
+
     const server = await registerRoutes(app);
 
     // Error handling middleware
@@ -64,5 +65,12 @@ app.use((req, res, next) => {
       console.error('Error stack:', err.stack);
     }
     process.exit(1);
+  } finally {
+    // Ensure pool is released on shutdown
+    process.on('SIGTERM', () => {
+      console.log('Shutting down server...');
+      pool.end();
+      process.exit(0);
+    });
   }
 })();
