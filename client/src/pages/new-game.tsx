@@ -244,12 +244,14 @@ const NewGamePage = () => {
   const currentQueuePos = activeGameSet?.currentQueuePosition || 0;
 
   // Get players eligible for the next game
+  // In our case, just take the first 'playersNeeded' active players without a game
   const eligiblePlayers = checkins?.filter(p =>
     p.isActive &&
-    p.gameId === null &&
-    p.queuePosition >= currentQueuePos &&
-    p.queuePosition < currentQueuePos + playersNeeded
-  ).sort((a, b) => {
+    p.gameId === null
+  )
+  .sort((a, b) => a.queuePosition - b.queuePosition)
+  .slice(0, playersNeeded)
+  .sort((a, b) => {
     // First, ensure promoted players go to their previous teams
     if (a.type && !b.type) return -1;  // Promoted players first
     if (!a.type && b.type) return 1;
@@ -286,12 +288,14 @@ const NewGamePage = () => {
     }
   });
 
-  // Get next up players (those after the current game's players)
+  // Get next up players (those after the first 'playersNeeded' players)
+  // Take the rest of the players after we've selected the first 'playersNeeded' for teams
   const nextUpPlayers = checkins?.filter(p =>
     p.isActive &&
-    p.gameId === null &&
-    p.queuePosition >= (currentQueuePos + playersNeeded)
-  ).sort((a, b) => a.queuePosition - b.queuePosition) || [];
+    p.gameId === null
+  )
+  .sort((a, b) => a.queuePosition - b.queuePosition)
+  .slice(playersNeeded) || [];
 
   console.log('Player groups:', {
     activeGameSet: {
