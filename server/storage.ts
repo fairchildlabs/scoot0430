@@ -284,9 +284,34 @@ export class DatabaseStorage implements IStorage {
       .where(eq(gamePlayers.gameId, gameId))
       .orderBy(asc(checkins.queuePosition));
     
+    // Make sure all players have a queue position (even if null in database)
+    // For ones that have null queue positions, assign them based on team, 
+    // with Home team (team=1) getting positions 1-4 and Away team (team=2) getting positions 5-8
+    const playersWithPositions = players.map((player, index) => {
+      if (player.queuePosition === null) {
+        // Assign positions 1-4 for HOME team and 5-8 for AWAY team
+        const basePosition = player.team === 1 ? 1 : 5;
+        // Find how many players are in the same team before this one
+        const teamPlayers = players.filter(p => p.team === player.team);
+        const positionInTeam = teamPlayers.findIndex(p => p.userId === player.userId);
+        
+        return {
+          ...player,
+          queuePosition: basePosition + (positionInTeam >= 0 ? positionInTeam : index % 4)
+        };
+      }
+      return player;
+    });
+    
+    // Sort by team first, then by queue position
+    const sortedPlayers = playersWithPositions.sort((a, b) => {
+      if (a.team !== b.team) return a.team - b.team;
+      return a.queuePosition - b.queuePosition;
+    });
+    
     return {
       ...game,
-      players
+      players: sortedPlayers
     };
   }
 
