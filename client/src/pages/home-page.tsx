@@ -372,12 +372,15 @@ export default function HomePage() {
                   </CardTitle>
                   {canEndGames && (
                     <div className="flex gap-2">
-                      <Button 
-                        onClick={() => setLocation("/games?tab=new-game")}
-                        variant="outline"
-                      >
-                        New Game
-                      </Button>
+                      {/* Only show New Game button when there are no active games (only finished games or no games) */}
+                      {activeGamesList.length === 0 && (
+                        <Button 
+                          onClick={() => setLocation("/games?tab=new-game")}
+                          variant="outline"
+                        >
+                          New Game
+                        </Button>
+                      )}
                       {activeGameSet && (
                         <Button 
                           onClick={() => handleEndSet(activeGameSet.id)}
