@@ -64,16 +64,29 @@ export function movePlayer(state: GameState, playerId: number, moveType: MoveTyp
 
   switch (moveType) {
     case 'CHECKOUT': {
-      // Only allow checkout for players in teams
+      // Handle Next Up players (in availablePlayers) differently
       if (playerLocation.list === 'available') {
+        const availableIndex = playerLocation.index;
+        
+        console.log('Checking out Next Up player:', {
+          availableIndex,
+          playerName: state.availablePlayers[availableIndex]?.username
+        });
+        
+        // Remove the player from availablePlayers
+        newState.availablePlayers = [
+          ...state.availablePlayers.slice(0, availableIndex),
+          ...state.availablePlayers.slice(availableIndex + 1)
+        ];
+        
         return {
-          success: false,
-          message: "Can only checkout players from teams",
-          updatedState: state
+          success: true,
+          message: "Next Up player checked out successfully",
+          updatedState: newState
         };
       }
 
-      // Get next available player
+      // For team players, handle replacement
       const replacementPlayer = newState.availablePlayers[0];
       if (!replacementPlayer) {
         return {
