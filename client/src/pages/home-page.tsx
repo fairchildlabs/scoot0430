@@ -62,6 +62,14 @@ export default function HomePage() {
     p.isActive &&
     p.gameId === null
   ).sort((a, b) => a.queuePosition - b.queuePosition) || [];
+  
+  // Add debugging for nextUpPlayers
+  console.log('Next up players with their types:', nextUpPlayers.map(p => ({
+    username: p.username,
+    type: p.type,
+    team: p.team,
+    pos: p.queuePosition
+  })));
 
   console.log('Debug - Data from queries:', {
     activeGameSet: {
@@ -86,6 +94,14 @@ export default function HomePage() {
   });
 
   // Separate active and finished games
+  // Add some debug logging to see what's coming back from the API
+  console.log('Games from API with their states:', activeGames.map(game => ({
+    id: game.id,
+    state: game.state,
+    court: game.court,
+    endTime: game.endTime
+  })));
+  
   const activeGamesList = activeGames.filter(game => game.state === 'started');
   const finishedGamesList = activeGames.filter(game => game.state === 'final');
 
@@ -168,6 +184,49 @@ export default function HomePage() {
       console.log('All queries have been refetched');
     } catch (error) {
       console.error('Error ending game:', error);
+    }
+  };
+
+  // Function to handle ending the entire game set
+  const handleEndSet = async (gameSetId: number) => {
+    if (!window.confirm("Are you sure you want to end this game set? This will deactivate the set and all associated check-ins.")) {
+      return;
+    }
+    
+    try {
+      console.log(`Ending game set ${gameSetId}`);
+      const response = await fetch(`/api/game-sets/${gameSetId}/deactivate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to deactivate game set');
+      }
+
+      console.log('Game set deactivated successfully, refreshing data...');
+
+      // Invalidate and refresh all relevant queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/games/active"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/checkins"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ["/api/game-sets"], exact: true })
+      ]);
+
+      // Force an immediate refetch of the data
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["/api/games/active"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/checkins"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["/api/game-sets"], exact: true })
+      ]);
+
+    } catch (error) {
+      console.error('Error ending game set:', error);
+      alert(`Failed to end game set: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -328,12 +387,26 @@ export default function HomePage() {
                     )}
                   </CardTitle>
                   {canEndGames && (
-                    <Button 
-                      onClick={() => setLocation("/games?tab=new-game")}
-                      variant="outline"
-                    >
-                      New Game
-                    </Button>
+                    <div className="flex gap-2">
+                      {/* Only show New Game button when there are no active games (only finished games or no games) */}
+                      {activeGamesList.length === 0 && (
+                        <Button 
+                          onClick={() => setLocation("/games?tab=new-game")}
+                          variant="outline"
+                        >
+                          New Game
+                        </Button>
+                      )}
+                      {activeGameSet && (
+                        <Button 
+                          onClick={() => handleEndSet(activeGameSet.id)}
+                          variant="outline"
+                          className="bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+                        >
+                          End Set
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </CardHeader>
