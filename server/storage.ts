@@ -478,18 +478,70 @@ export class DatabaseStorage implements IStorage {
       return null;
     }
     
+    // Get game set for max consecutive wins setting
+    const gameSet = await db.query.gameSets.findFirst({
+      where: eq(gameSets.id, game.setId)
+    });
+
+    if (!gameSet) {
+      console.error(`Game set not found for game ${gameId}`);
+      return null;
+    }
+
+    const maxConsecutiveTeamWins = gameSet.maxConsecutiveTeamWins || 2; // Default to 2 if not set
+    
     // Determine winning team
     const team1Score = game.team1Score || 0;
     const team2Score = game.team2Score || 0;
     
+    // Get previous games to check for consecutive wins
+    const previousGames = await db.query.games.findMany({
+      where: eq(games.setId, game.setId),
+      orderBy: [desc(games.id)]
+    });
+
+    // Find winning team for current game
+    let winningTeam: 1 | 2 | null = null;
     if (team1Score > team2Score) {
-      return { type: 'loss_promoted', team: 2 };
+      winningTeam = 1;
     } else if (team2Score > team1Score) {
-      return { type: 'loss_promoted', team: 1 };
+      winningTeam = 2;
+    } else {
+      // If tied, no promotion
+      return null;
     }
+
+    // Count consecutive wins for the winning team (including current game)
+    let consecutiveWins = 1; // Start with current win
     
-    // If tied, no promotion
-    return null;
+    // Skip the first game (current game) and check previous games
+    for (let i = 1; i < previousGames.length; i++) {
+      const prevGame = previousGames[i];
+      const prevTeam1Score = prevGame.team1Score || 0;
+      const prevTeam2Score = prevGame.team2Score || 0;
+      
+      // Check if the same team won the previous game
+      const prevWinningTeam = prevTeam1Score > prevTeam2Score ? 1 : (prevTeam2Score > prevTeam1Score ? 2 : null);
+      
+      if (prevWinningTeam === winningTeam) {
+        consecutiveWins++;
+      } else {
+        // Break the streak
+        break;
+      }
+    }
+
+    console.log(`Game ${gameId}: Team ${winningTeam} won with ${consecutiveWins} consecutive wins (max: ${maxConsecutiveTeamWins})`);
+    
+    // Apply promotion logic:
+    // If team has less consecutive wins than max, winning team gets win_promoted
+    // If team has reached max consecutive wins, losing team gets loss_promoted
+    if (consecutiveWins < maxConsecutiveTeamWins) {
+      return { type: 'win_promoted', team: winningTeam };
+    } else {
+      // Max consecutive wins reached, promote the losing team
+      return { type: 'loss_promoted', team: winningTeam === 1 ? 2 : 1 };
+    }
   }
 
   async getGameSetLog(gameSetId: number): Promise<any[]> {
