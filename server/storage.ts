@@ -886,17 +886,28 @@ export class DatabaseStorage implements IStorage {
       );
       console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
 
-      // Update next player's checkin with game and team
-      await db
-        .update(checkins)
-        .set({
-          gameId: currentCheckin.gameId,
-          team: currentCheckin.team
-        })
-        .where(eq(checkins.id, nextPlayerCheckin.id));
+      // Update next player's checkin with game and team, maintaining their queue position for Home team
+      if (currentCheckin.team === 1) {
+        // For Home team, keep the next player's original queue position
+        await db
+          .update(checkins)
+          .set({
+            gameId: currentCheckin.gameId,
+            team: currentCheckin.team
+          })
+          .where(eq(checkins.id, nextPlayerCheckin.id));
+        console.log('Home team checkout - keeping queue positions unchanged');
+      } else {
+        // For Away team, update the checkin and shift queue positions
+        await db
+          .update(checkins)
+          .set({
+            gameId: currentCheckin.gameId,
+            team: currentCheckin.team,
+            queuePosition: currentCheckin.queuePosition
+          })
+          .where(eq(checkins.id, nextPlayerCheckin.id));
 
-      // Only shift positions and decrement next_up for Away team (team 2)
-      if (currentCheckin.team === 2) {
         console.log('Away team checkout - updating queue positions');
 
         // Update queue positions for players after the next player
@@ -922,8 +933,6 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(gameSets.id, activeGameSet.id));
         console.log('Updated queue positions and decremented next_up for Away team checkout');
-      } else {
-        console.log('Home team checkout - keeping queue positions unchanged');
       }
     } else {
       throw new Error('No available player for replacement');
