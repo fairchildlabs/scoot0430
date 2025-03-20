@@ -888,6 +888,34 @@ export class DatabaseStorage implements IStorage {
           team: currentCheckin.team
         })
         .where(eq(checkins.id, nextPlayerCheckin.id));
+
+      // If this is Away team (team 2), shift queue positions
+      if (currentCheckin.team === 2) {
+        // Update queue positions for players after the next player
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: sql`${checkins.queuePosition} - 1`
+          })
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              gt(checkins.queuePosition, nextPlayerCheckin.queuePosition)
+            )
+          );
+        console.log(`Updated queue positions after position ${nextPlayerCheckin.queuePosition} for Away team checkout`);
+
+        // Decrement game set's queue_next_up
+        await db
+          .update(gameSets)
+          .set({
+            queueNextUp: sql`${gameSets.queueNextUp} - 1`
+          })
+          .where(eq(gameSets.id, activeGameSet.id));
+        console.log('Decremented game set queue_next_up for Away team checkout');
+      }
     }
   }
 
