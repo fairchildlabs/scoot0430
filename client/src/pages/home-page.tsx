@@ -86,6 +86,14 @@ export default function HomePage() {
   });
 
   // Separate active and finished games
+  // Add some debug logging to see what's coming back from the API
+  console.log('Games from API with their states:', activeGames.map(game => ({
+    id: game.id,
+    state: game.state,
+    court: game.court,
+    endTime: game.endTime
+  })));
+  
   const activeGamesList = activeGames.filter(game => game.state === 'started');
   const finishedGamesList = activeGames.filter(game => game.state === 'final');
 
