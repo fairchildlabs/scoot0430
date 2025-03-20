@@ -7,7 +7,11 @@ export const CheckinType = {
   MANUAL: 'manual',
   AUTOUP: 'autoup',
   WIN_PROMOTED: 'win_promoted',
-  LOSS_PROMOTED: 'loss_promoted'
+  LOSS_PROMOTED: 'loss_promoted',
+  BUMP: 'bump',
+  CHECKOUT: 'checkout',
+  HORIZONTAL_SWAP: 'horizontal_swap',
+  VERTICAL_SWAP: 'vertical_swap'
 } as const;
 
 export type CheckinType = typeof CheckinType[keyof typeof CheckinType];
