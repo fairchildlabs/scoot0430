@@ -329,6 +329,64 @@ export class DatabaseStorage implements IStorage {
       promotedPlayers: promotedPlayers.map(p => ({ id: p.userId, team: p.team }))
     });
     
+    // If there are game players that weren't promoted, check for autoup=TRUE players
+    if (gamePlayerIds.length > 0) {
+      const nonPromotedUserIds = gamePlayerIds
+        .map(p => p.userId)
+        .filter(id => !promotedPlayers.some(pp => pp.userId === id));
+      
+      console.log('Non-promoted player IDs that might be eligible for auto-recheckin:', nonPromotedUserIds);
+      
+      if (nonPromotedUserIds.length > 0) {
+        // Get users with autoup=TRUE
+        const autoUpUsers = await db
+          .select({
+            id: users.id,
+            username: users.username,
+            autoup: users.autoup
+          })
+          .from(users)
+          .where(
+            and(
+              inArray(users.id, nonPromotedUserIds),
+              eq(users.autoup, true)
+            )
+          );
+        
+        console.log('Auto-up users found:', autoUpUsers.map(u => u.username));
+        
+        if (autoUpUsers.length > 0) {
+          // Find the highest queue position
+          const [highestPosition] = await db
+            .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
+            .from(checkins)
+            .where(eq(checkins.isActive, true));
+          
+          let nextPosition = highestPosition?.maxPosition ? highestPosition.maxPosition + 1 : activeGameSet.currentQueuePosition;
+          
+          // Create new checkins for autoup users
+          for (const user of autoUpUsers) {
+            await db
+              .insert(checkins)
+              .values({
+                userId: user.id,
+                clubIndex: game.clubIndex || 34,
+                checkInTime: getCentralTime(),
+                isActive: true,
+                checkInDate: getDateString(getCentralTime()),
+                gameSetId: activeGameSet.id,
+                queuePosition: nextPosition++,
+                type: CheckinType.AUTOUP,
+                gameId: null,
+                team: null
+              });
+            
+            console.log(`Auto-recheckin created for user ${user.username} at queue position ${nextPosition - 1}`);
+          }
+        }
+      }
+    }
+    
     console.log(`Game ${gameId} updated successfully:`, updatedGame);
     return updatedGame;
   }
