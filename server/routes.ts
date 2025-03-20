@@ -150,11 +150,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create player associations if provided
       if (req.body.players && Array.isArray(req.body.players)) {
-        await Promise.all(
-          req.body.players.map(async (player: { userId: number; team: number }) => {
-            await storage.createGamePlayer(game.id, player.userId, player.team);
-          })
-        );
+        // Get active game set to get players per team
+        const activeGameSet = await storage.getActiveGameSet();
+        if (!activeGameSet) {
+          throw new Error("No active game set available");
+        }
+        
+        console.log('POST /api/games - Assigning players to teams with active game set:', {
+          gameSetId: activeGameSet.id,
+          playersPerTeam: activeGameSet.playersPerTeam,
+          playerCount: req.body.players.length
+        });
+        
+        // First update the checkins to set gameId and team
+        for (const player of req.body.players) {
+          // Find the active checkin for this user
+          const [checkin] = await db
+            .select()
+            .from(checkins)
+            .where(
+              and(
+                eq(checkins.userId, player.userId),
+                eq(checkins.isActive, true),
+                eq(checkins.gameSetId, activeGameSet.id)
+              )
+            );
+            
+          if (checkin) {
+            console.log(`Updating checkin for player ${player.userId} to game ${game.id}, team ${player.team}`);
+            await db
+              .update(checkins)
+              .set({
+                gameId: game.id,
+                team: player.team
+              })
+              .where(eq(checkins.id, checkin.id));
+          }
+          
+          // Create game player record
+          await storage.createGamePlayer(game.id, player.userId, player.team);
+        }
       }
 
       // Fetch the complete game data with players

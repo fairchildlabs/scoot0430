@@ -152,6 +152,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGame(setId: number, court: string, state: string): Promise<Game> {
+    // Get the game set to access playersPerTeam for updating currentQueuePosition
+    const [gameSet] = await db.select().from(gameSets).where(eq(gameSets.id, setId));
+    if (!gameSet) throw new Error(`Game set ${setId} not found`);
+    
+    // Calculate new current queue position (should be players_per_team * 2 + 1)
+    // This ensures positions 1-8 (for 4 per team) are assigned to game players
+    const playersPerTeam = gameSet.playersPerTeam || 4;
+    const newQueuePosition = (playersPerTeam * 2) + 1;
+    
+    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${newQueuePosition}`);
+
+    // First update the game set's currentQueuePosition
+    await db
+      .update(gameSets)
+      .set({
+        currentQueuePosition: newQueuePosition
+      })
+      .where(eq(gameSets.id, setId));
+      
+    // Then create the game
     const [game] = await db
       .insert(games)
       .values({
@@ -161,8 +181,10 @@ export class DatabaseStorage implements IStorage {
         team1Score: 0,
         team2Score: 0,
         startTime: getCentralTime(),
+        clubIndex: 34 // Add the club index
       })
       .returning();
+      
     return game;
   }
 
