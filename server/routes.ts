@@ -211,8 +211,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`PATCH /api/games/${gameId}/score - Processing score update:`, { team1Score, team2Score });
 
+      // Get current active game set for logging
+      const activeGameSet = await storage.getActiveGameSet();
+      console.log("Active game set before score update:", activeGameSet);
+      
+      // Get game state before update for debugging
+      const gameBeforeUpdate = await storage.getGame(gameId);
+      console.log("Game state before score update:", {
+        gameId,
+        state: gameBeforeUpdate.state,
+        players: gameBeforeUpdate.players.map(p => ({
+          id: p.id,
+          username: p.username,
+          team: p.team,
+          queuePosition: p.queuePosition
+        }))
+      });
+
       // Update game with scores and set state to 'final'
       const updatedGame = await storage.updateGameScore(gameId, team1Score, team2Score);
+      
+      // Get all active checkins after the update for debugging
+      const activeCheckins = await db
+        .select()
+        .from(checkins)
+        .where(eq(checkins.isActive, true))
+        .orderBy(asc(checkins.queuePosition));
+      
+      console.log("Active checkins after game update:", activeCheckins.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        queuePosition: c.queuePosition,
+        gameId: c.gameId,
+        team: c.team,
+        type: c.type
+      })));
+      
       res.json(updatedGame);
     } catch (error) {
       console.error('PATCH /api/games/:id/score - Error:', error);
