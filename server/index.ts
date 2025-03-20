@@ -7,6 +7,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Health check endpoint
+app.get("/health", (_req, res) => {
+  res.send("OK");
+});
+
 // Add detailed error logging
 app.use((req, res, next) => {
   const start = Date.now();
@@ -14,7 +19,7 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
+    if (path.startsWith("/api") || path === "/health") {
       log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
   });
