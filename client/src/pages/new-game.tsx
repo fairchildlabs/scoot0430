@@ -212,7 +212,8 @@ const NewGamePage = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
       queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] });
 
-      setStatusMessage(`Player #${data.playerNumber} checked out successfully`);
+      // Use the message from the server response, which has our detailed player swap info
+      setStatusMessage(data.message || `Player #${data.playerNumber} action completed successfully`);
 
       // Clear status message after 3 seconds
       setTimeout(() => setStatusMessage(''), 3000);
