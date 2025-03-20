@@ -191,6 +191,32 @@ export class DatabaseStorage implements IStorage {
   async updateGameScore(gameId: number, team1Score: number, team2Score: number): Promise<Game> {
     console.log(`Updating game ${gameId} with scores: ${team1Score}-${team2Score} and setting state to final`);
     
+    // First get current game and active game set
+    const [game] = await db.select().from(games).where(eq(games.id, gameId));
+    if (!game) {
+      throw new Error(`Game ${gameId} not found`);
+    }
+
+    const activeGameSet = await this.getActiveGameSet();
+    if (!activeGameSet) {
+      throw new Error("No active game set found");
+    }
+
+    // Log all active checkins before update
+    const activeCheckins = await db
+      .select({
+        id: checkins.id,
+        userId: checkins.userId,
+        username: users.username,
+        isActive: checkins.isActive
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(eq(checkins.gameId, gameId));
+
+    console.log(`Found ${activeCheckins.length} checkins for game ${gameId} before deactivation:`,
+      activeCheckins.map(c => `${c.username} (Active: ${c.isActive})`));
+
     // Update the game with scores and set state to final
     const [updatedGame] = await db
       .update(games)
@@ -203,6 +229,85 @@ export class DatabaseStorage implements IStorage {
       .where(eq(games.id, gameId))
       .returning();
       
+    // Determine promotion type and team
+    const promotionInfo = await this.determinePromotionType(gameId);
+    console.log("Promotion info for game", gameId, ":", promotionInfo);
+
+    // Get all players from this game
+    const gamePlayerIds = await db
+      .select({
+        userId: gamePlayers.userId
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.gameId, gameId));
+
+    // Initialize promotedPlayers outside the if block
+    let promotedPlayers: { userId: number; team: number }[] = [];
+
+    if (promotionInfo) {
+      // Get players from the promoted team
+      promotedPlayers = await db
+        .select({
+          userId: gamePlayers.userId,
+          team: gamePlayers.team
+        })
+        .from(gamePlayers)
+        .where(
+          and(
+            eq(gamePlayers.gameId, gameId),
+            eq(gamePlayers.team, promotionInfo.team)
+          )
+        );
+
+      console.log('Found promoted players:', promotedPlayers.map(p => p.userId));
+
+      // First increment queue positions for all active checkins after the current queue position
+      await db
+        .update(checkins)
+        .set({
+          queuePosition: sql`${checkins.queuePosition} + ${activeGameSet.playersPerTeam}`
+        })
+        .where(
+          and(
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id),
+            sql`${checkins.queuePosition} >= ${activeGameSet.currentQueuePosition}`
+          )
+        );
+
+      // Then create new checkins for promoted team players
+      for (let i = 0; i < promotedPlayers.length; i++) {
+        const player = promotedPlayers[i];
+        await db
+          .insert(checkins)
+          .values({
+            userId: player.userId,
+            clubIndex: game.clubIndex || 34,
+            checkInTime: getCentralTime(),
+            isActive: true,
+            checkInDate: getDateString(getCentralTime()),
+            gameSetId: activeGameSet.id,
+            queuePosition: activeGameSet.currentQueuePosition + i,
+            type: promotionInfo.type,
+            gameId: null,
+            team: player.team
+          });
+      }
+    }
+
+    // Deactivate checkins for this game
+    await db
+      .update(checkins)
+      .set({ isActive: false })
+      .where(eq(checkins.gameId, gameId));
+      
+    // Get all auto-up eligible players and create new active checkins for them
+    console.log('Finding auto-up players:', {
+      gamePlayerIds: gamePlayerIds.map(p => p.userId),
+      playerCount: gamePlayerIds.length,
+      promotedPlayers: promotedPlayers.map(p => ({ id: p.userId, team: p.team }))
+    });
+    
     console.log(`Game ${gameId} updated successfully:`, updatedGame);
     return updatedGame;
   }
