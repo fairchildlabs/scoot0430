@@ -62,6 +62,14 @@ export default function HomePage() {
     p.isActive &&
     p.gameId === null
   ).sort((a, b) => a.queuePosition - b.queuePosition) || [];
+  
+  // Add debugging for nextUpPlayers
+  console.log('Next up players with their types:', nextUpPlayers.map(p => ({
+    username: p.username,
+    type: p.type,
+    team: p.team,
+    pos: p.queuePosition
+  })));
 
   console.log('Debug - Data from queries:', {
     activeGameSet: {
