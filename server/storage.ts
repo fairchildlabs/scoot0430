@@ -203,7 +203,7 @@ export class DatabaseStorage implements IStorage {
       .insert(gameSets)
       .values({
         ...gameSet,
-        createdByUserId: userId,
+        createdBy: userId, // Match the column name in the schema
         isActive: true,
         createdAt: getCentralTime(),
         currentQueuePosition: 1 // Start with queue position 1
