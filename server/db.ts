@@ -58,9 +58,9 @@ export async function testDatabaseConnection() {
     } catch (err) {
       console.error(`Database connection attempt failed (${retries} retries left):`, err);
       console.error('Error details:', {
-        message: err.message,
-        code: err.code,
-        stack: err.stack
+        message: (err as Error).message,
+        code: (err as any).code,
+        stack: (err as Error).stack
       });
       retries--;
       if (retries > 0) {

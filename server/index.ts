@@ -27,11 +27,54 @@ app.use((req, res, next) => {
   next();
 });
 
+let server: any = null;
+
+// Graceful shutdown handler
+const shutdownGracefully = async (signal: string) => {
+  console.log(`\nReceived ${signal}, starting graceful shutdown...`);
+
+  // Set a timeout for the entire shutdown process
+  const shutdownTimeout = setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+
+  try {
+    if (server) {
+      console.log('Closing HTTP server...');
+      await new Promise((resolve) => {
+        server.close(resolve);
+      });
+      console.log('HTTP server closed');
+    }
+
+    console.log('Closing database pool...');
+    await pool.end();
+    console.log('Database pool closed');
+
+    clearTimeout(shutdownTimeout);
+    console.log('Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+};
+
+// Register shutdown handlers
+process.on('SIGTERM', () => shutdownGracefully('SIGTERM'));
+process.on('SIGINT', () => shutdownGracefully('SIGINT'));
+
 (async () => {
+  const startupTimeout = setTimeout(() => {
+    console.error('Server startup timed out');
+    process.exit(1);
+  }, 30000);
+
   try {
     console.log('Starting server initialization...');
 
-    // Test database connection with more detailed logging
+    // Test database connection with timeout
     console.log('Testing database connection...');
     const isConnected = await testDatabaseConnection();
     if (!isConnected) {
@@ -39,8 +82,16 @@ app.use((req, res, next) => {
     }
     console.log('Database connection successful');
 
+    // Initialize Express server first
+    server = app.listen({
+      port: process.env.PORT || 5000,
+      host: "0.0.0.0"
+    }, () => {
+      console.log(`Server listening on port ${process.env.PORT || 5000}`);
+    });
+
     console.log('Registering routes...');
-    const server = await registerRoutes(app);
+    await registerRoutes(app);
     console.log('Routes registered successfully');
 
     // Error handling middleware
@@ -70,15 +121,9 @@ app.use((req, res, next) => {
       }
     }
 
-    // Start server with detailed logging
-    const port = process.env.PORT || 5000;
-    server.listen({
-      port,
-      host: "0.0.0.0"
-    }, () => {
-      console.log(`Server started successfully on port ${port}`);
-      log(`Server is ready and listening on port ${port}`);
-    });
+    clearTimeout(startupTimeout);
+    console.log('Server initialization completed successfully');
+    log(`Server is ready and listening on port ${process.env.PORT || 5000}`);
 
   } catch (err) {
     console.error('Failed to start server:', err);
@@ -86,17 +131,5 @@ app.use((req, res, next) => {
       console.error('Error stack:', err.stack);
     }
     process.exit(1);
-  } finally {
-    // Ensure pool is released on shutdown
-    process.on('SIGTERM', async () => {
-      console.log('Shutting down server...');
-      try {
-        await pool.end();
-        console.log('Database pool has been closed');
-      } catch (err) {
-        console.error('Error closing database pool:', err);
-      }
-      process.exit(0);
-    });
   }
 })();
