@@ -7,13 +7,16 @@ neonConfig.webSocketConstructor = ws;
 
 // Get the appropriate database URL based on environment
 const getDatabaseUrl = () => {
+  console.log('Getting database URL...');
   // For deployment
   if (process.env.DEPLOYMENT_DATABASE_URL) {
+    console.log('Using deployment database URL');
     return process.env.DEPLOYMENT_DATABASE_URL;
   }
 
   // For local development
   if (process.env.DATABASE_URL) {
+    console.log('Using local development database URL');
     return process.env.DATABASE_URL;
   }
 
@@ -41,19 +44,27 @@ pool.on('error', (err, client) => {
 // Initialize Drizzle ORM with the pool
 export const db = drizzle({ client: pool, schema });
 
-// Verify database connection
+// Verify database connection with more detailed logging
 export async function testDatabaseConnection() {
+  console.log('Starting database connection test...');
   let retries = 3;
   while (retries > 0) {
     try {
+      console.log(`Attempting database connection (${retries} retries left)...`);
       const client = await pool.connect();
       console.log('Successfully connected to database');
       client.release();
       return true;
     } catch (err) {
       console.error(`Database connection attempt failed (${retries} retries left):`, err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
       retries--;
       if (retries > 0) {
+        console.log('Waiting 1 second before next retry...');
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }

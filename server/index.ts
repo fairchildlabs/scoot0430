@@ -26,18 +26,24 @@ app.use((req, res, next) => {
   try {
     console.log('Starting server initialization...');
 
-    // Test database connection before proceeding
+    // Test database connection with more detailed logging
+    console.log('Testing database connection...');
     const isConnected = await testDatabaseConnection();
     if (!isConnected) {
       throw new Error('Failed to establish database connection after retries');
     }
     console.log('Database connection successful');
 
+    console.log('Registering routes...');
     const server = await registerRoutes(app);
+    console.log('Routes registered successfully');
 
     // Error handling middleware
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       console.error('Server Error:', err);
+      if (err.stack) {
+        console.error('Error stack:', err.stack);
+      }
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
       res.status(status).json({ message });
@@ -47,9 +53,16 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV === "production") {
       console.log('Setting up static file serving...');
       serveStatic(app);
+      console.log('Static file serving setup complete');
     } else {
       console.log('Setting up Vite development middleware...');
-      await setupVite(app, server);
+      try {
+        await setupVite(app, server);
+        console.log('Vite middleware setup complete');
+      } catch (error) {
+        console.error('Error setting up Vite middleware:', error);
+        throw error;
+      }
     }
 
     // Start server with detailed logging
@@ -70,9 +83,14 @@ app.use((req, res, next) => {
     process.exit(1);
   } finally {
     // Ensure pool is released on shutdown
-    process.on('SIGTERM', () => {
+    process.on('SIGTERM', async () => {
       console.log('Shutting down server...');
-      pool.end();
+      try {
+        await pool.end();
+        console.log('Database pool has been closed');
+      } catch (err) {
+        console.error('Error closing database pool:', err);
+      }
       process.exit(0);
     });
   }
