@@ -886,19 +886,14 @@ export class DatabaseStorage implements IStorage {
       );
       console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
 
-      // Update next player's checkin with game and team, maintaining their queue position for Home team
       if (currentCheckin.team === 1) {
-        // For Home team, keep the next player's original queue position
-        await db
-          .update(checkins)
-          .set({
-            gameId: currentCheckin.gameId,
-            team: currentCheckin.team
-          })
-          .where(eq(checkins.id, nextPlayerCheckin.id));
-        console.log('Home team checkout - keeping queue positions unchanged');
-      } else {
-        // For Away team, update the checkin and shift queue positions
+        // For Home team: 
+        // 1. Next player inherits the checked out player's position
+        // 2. Decrement positions for remaining Next Up players
+        // 3. Update queue_next_up
+        console.log('Home team checkout - replacing player and updating Next Up positions');
+
+        // Update next player's checkin with game and team, inheriting position
         await db
           .update(checkins)
           .set({
@@ -908,7 +903,44 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(checkins.id, nextPlayerCheckin.id));
 
-        console.log('Away team checkout - updating queue positions');
+        // Decrement positions for remaining Next Up players
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: sql`${checkins.queuePosition} - 1`
+          })
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              gt(checkins.queuePosition, nextPlayerCheckin.queuePosition),
+              eq(checkins.gameId, null) // Only update Next Up players
+            )
+          );
+
+        // Decrement queue_next_up
+        await db
+          .update(gameSets)
+          .set({
+            queueNextUp: sql`${gameSets.queueNextUp} - 1`
+          })
+          .where(eq(gameSets.id, activeGameSet.id));
+
+        console.log('Updated Next Up positions and decremented queue_next_up');
+      } else {
+        // For Away team:
+        // Keep existing behavior where everyone shifts up
+        console.log('Away team checkout - shifting all positions up');
+
+        await db
+          .update(checkins)
+          .set({
+            gameId: currentCheckin.gameId,
+            team: currentCheckin.team,
+            queuePosition: currentCheckin.queuePosition
+          })
+          .where(eq(checkins.id, nextPlayerCheckin.id));
 
         // Update queue positions for players after the next player
         await db
@@ -925,7 +957,7 @@ export class DatabaseStorage implements IStorage {
             )
           );
 
-        // Decrement game set's queue_next_up for Away team only
+        // Decrement game set's queue_next_up
         await db
           .update(gameSets)
           .set({
