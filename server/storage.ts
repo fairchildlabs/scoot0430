@@ -99,7 +99,7 @@ export class DatabaseStorage implements IStorage {
       currentQueuePosition: activeGameSet.currentQueuePosition
     });
 
-    // Get all active checkins for today
+    // Get all active checkins for today for the CURRENT game set only
     const results = await db
       .select({
         id: checkins.id,
@@ -122,7 +122,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(checkins.clubIndex, clubIndex),
           eq(checkins.isActive, true),
-          eq(checkins.checkInDate, today)
+          eq(checkins.checkInDate, today),
+          eq(checkins.gameSetId, activeGameSet.id) // Filter by current game set ID
         )
       )
       .orderBy(checkins.queuePosition);
