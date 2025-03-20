@@ -44,7 +44,7 @@ export interface IStorage {
   getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number })[] }>;
   getGameSetLog(gameSetId: number): Promise<any[]>;
   determinePromotionType(gameId: number): Promise<{ type: 'win_promoted' | 'loss_promoted', team: 1 | 2 } | null>;
-  handlePlayerMove(userId: number, moveType: string): Promise<void>;
+  handlePlayerMove(userId: number, moveType: string): Promise<{message: string, details: any}>;
   handleGamePlayerCheckout(currentCheckin: {id: number; gameId: number; team: number; queuePosition: number; username: string}, activeGameSet: GameSet): Promise<void>;
   handleQueuePlayerCheckout(currentCheckin: {id: number; queuePosition: number; username: string}, activeGameSet: GameSet): Promise<void>;
   handleHomeTeamCheckout(currentCheckin: { id: number; queuePosition: number; username: string; gameId: number; team: number }, activeGameSet: GameSet): Promise<void>;
@@ -1000,6 +1000,20 @@ export class DatabaseStorage implements IStorage {
     console.log('Updated queue positions and decremented next_up for Away team checkout');
   }
 
+  async handleGamePlayerCheckout(
+    currentCheckin: { id: number; gameId: number; team: number; queuePosition: number; username: string },
+    activeGameSet: GameSet
+  ): Promise<void> {
+    // Call the appropriate checkout method based on team
+    if (currentCheckin.team === 1) {
+      return this.handleHomeTeamCheckout(currentCheckin, activeGameSet);
+    } else if (currentCheckin.team === 2) {
+      return this.handleAwayTeamCheckout(currentCheckin, activeGameSet);
+    } else {
+      throw new Error(`Invalid team ${currentCheckin.team} for game player checkout`);
+    }
+  }
+
   async handleQueuePlayerCheckout(
     currentCheckin: { id: number; queuePosition: number; username: string },
     activeGameSet: GameSet
@@ -1042,7 +1056,7 @@ export class DatabaseStorage implements IStorage {
     console.log('Decremented game set queue_next_up');
   }
 
-  async handlePlayerMove(userId: number, moveType: string): Promise<void> {
+  async handlePlayerMove(userId: number, moveType: string): Promise<{message: string, details: any}> {
     console.log(`Handling player move:`, { userId, moveType });
 
     // Get active game set first
@@ -1166,7 +1180,10 @@ export class DatabaseStorage implements IStorage {
 
         if (nextUpPlayers.length === 0) {
           console.log('No NEXT_UP players available for BUMP');
-          return;
+          return {
+            message: "No players available in NEXT UP queue to bump with",
+            details: {}
+          };
         }
 
         // Get the first NEXT_UP player
@@ -1240,7 +1257,10 @@ export class DatabaseStorage implements IStorage {
 
         if (nextPlayer.length === 0) {
           console.log('No player after this one in queue for BUMP');
-          return;
+          return {
+            message: "No players after this one in queue to bump with",
+            details: {}
+          };
         }
 
         const playerToSwap = nextPlayer[0];
@@ -1323,7 +1343,10 @@ export class DatabaseStorage implements IStorage {
 
         if (awayPlayers.length === 0) {
           console.log(`No AWAY team player found at position ${awayPosition} for HORIZONTAL_SWAP`);
-          return;
+          return {
+            message: `No AWAY team player found at position ${awayPosition}`,
+            details: {}
+          };
         }
 
         // Get the AWAY team player
@@ -1397,7 +1420,10 @@ export class DatabaseStorage implements IStorage {
 
         if (homePlayers.length === 0) {
           console.log(`No HOME team player found at position ${homePosition} for HORIZONTAL_SWAP`);
-          return;
+          return {
+            message: `No HOME team player found at position ${homePosition}`,
+            details: {}
+          };
         }
 
         // Get the HOME team player
@@ -1439,13 +1465,27 @@ export class DatabaseStorage implements IStorage {
         console.log(`HORIZONTAL_SWAP operation completed successfully`);
       } else {
         console.log(`HORIZONTAL_SWAP not applicable for NEXT_UP player ${currentCheckin.username}`);
-        return;
+        return {
+          message: `HORIZONTAL_SWAP not applicable for NEXT_UP player ${currentCheckin.username}`,
+          details: {}
+        };
       }
 
       // Log final state
       const finalState = await this.getCurrentCheckinsState();
       console.log('Final checkins state after HORIZONTAL_SWAP:', finalState);
+      
+      return {
+        message: `Successfully swapped ${currentCheckin.username}'s position horizontally`,
+        details: { player: currentCheckin.username, moveType: "HORIZONTAL_SWAP" }
+      };
     }
+    
+    // If we reach here, it means a checkout or bump operation completed successfully
+    return {
+      message: `Successfully processed ${moveType} for ${currentCheckin.username}`,
+      details: { player: currentCheckin.username, moveType }
+    };
   }
 
   // Helper method to get formatted checkin state - renamed to be more specific
