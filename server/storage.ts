@@ -844,6 +844,12 @@ export class DatabaseStorage implements IStorage {
     currentCheckin: { id: number; gameId: number; team: number; queuePosition: number; username: string },
     activeGameSet: GameSet
   ): Promise<void> {
+    console.log(`Processing game player checkout:`, {
+      username: currentCheckin.username,
+      team: currentCheckin.team,
+      position: currentCheckin.queuePosition
+    });
+
     // Get the next player in queue
     const [nextPlayerCheckin] = await db
       .select({
@@ -880,7 +886,7 @@ export class DatabaseStorage implements IStorage {
       );
       console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
 
-      // Update next player's checkin
+      // Update next player's checkin with game and team
       await db
         .update(checkins)
         .set({
@@ -889,8 +895,10 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(checkins.id, nextPlayerCheckin.id));
 
-      // If this is Away team (team 2), shift queue positions
+      // Only shift positions and decrement next_up for Away team (team 2)
       if (currentCheckin.team === 2) {
+        console.log('Away team checkout - updating queue positions');
+
         // Update queue positions for players after the next player
         await db
           .update(checkins)
@@ -905,17 +913,20 @@ export class DatabaseStorage implements IStorage {
               gt(checkins.queuePosition, nextPlayerCheckin.queuePosition)
             )
           );
-        console.log(`Updated queue positions after position ${nextPlayerCheckin.queuePosition} for Away team checkout`);
 
-        // Decrement game set's queue_next_up
+        // Decrement game set's queue_next_up for Away team only
         await db
           .update(gameSets)
           .set({
             queueNextUp: sql`${gameSets.queueNextUp} - 1`
           })
           .where(eq(gameSets.id, activeGameSet.id));
-        console.log('Decremented game set queue_next_up for Away team checkout');
+        console.log('Updated queue positions and decremented next_up for Away team checkout');
+      } else {
+        console.log('Home team checkout - keeping queue positions unchanged');
       }
+    } else {
+      throw new Error('No available player for replacement');
     }
   }
 
@@ -925,7 +936,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     console.log(`Handling queue player checkout for ${currentCheckin.username}`);
 
-    // Deactivate the checkin
+        // Deactivate the checkin
     await db
       .update(checkins)
       .set({ isActive: false })
