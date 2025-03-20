@@ -850,6 +850,19 @@ export class DatabaseStorage implements IStorage {
       position: currentCheckin.queuePosition
     });
 
+    // Store the original position before deactivating
+    const checkedOutPosition = currentCheckin.queuePosition;
+
+    // First deactivate current player's checkin and explicitly set queue_position to 0
+    await db
+      .update(checkins)
+      .set({
+        isActive: false,
+        queuePosition: 0
+      })
+      .where(eq(checkins.id, currentCheckin.id));
+    console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username} and set queue_position to 0`);
+
     // Get the next player in queue
     const [nextPlayerCheckin] = await db
       .select({
@@ -870,15 +883,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(checkins.queuePosition)
       .limit(1);
 
-    // Deactivate current player's checkin and set queue_position to 0
-    await db
-      .update(checkins)
-      .set({ 
-        isActive: false,
-        queuePosition: 0 
-      })
-      .where(eq(checkins.id, currentCheckin.id));
-    console.log(`Deactivated checkin ${currentCheckin.id} for ${currentCheckin.username}`);
+    // Store next player's original position for decrementing logic
+    const nextPlayerOriginalPosition = nextPlayerCheckin?.queuePosition;
 
     if (nextPlayerCheckin) {
       // Add next player to game
@@ -890,22 +896,28 @@ export class DatabaseStorage implements IStorage {
       console.log(`Added player ${nextPlayerCheckin.username} to game ${currentCheckin.gameId} team ${currentCheckin.team}`);
 
       if (currentCheckin.team === 1) {
-        // For Home team: 
-        // 1. Next player inherits the checked out player's position
-        // 2. Only decrement positions for players after the next player's original position
-        console.log('Home team checkout - replacing player and updating Next Up positions');
+        // For Home team:
+        // 1. Next player inherits the exact position of checked out player
+        // 2. Only decrement positions for players after nextPlayerCheckin's original position
+        console.log('Home team checkout - having next player inherit position:', {
+          checkedOutPosition,
+          nextPlayerOriginalPosition,
+          nextPlayerUsername: nextPlayerCheckin.username
+        });
 
-        // Update next player's checkin with game and team, inheriting position
+        // Update next player's checkin with game, team, and inherited position
         await db
           .update(checkins)
           .set({
             gameId: currentCheckin.gameId,
             team: currentCheckin.team,
-            queuePosition: currentCheckin.queuePosition
+            queuePosition: checkedOutPosition // Inherit exact position
           })
           .where(eq(checkins.id, nextPlayerCheckin.id));
 
-        // Decrement positions only for remaining Next Up players after nextPlayerCheckin
+        console.log(`Updated ${nextPlayerCheckin.username}'s position to ${checkedOutPosition}`);
+
+        // Decrement positions only for Next Up players after nextPlayerCheckin's original position
         await db
           .update(checkins)
           .set({
@@ -916,7 +928,7 @@ export class DatabaseStorage implements IStorage {
               eq(checkins.isActive, true),
               eq(checkins.gameSetId, activeGameSet.id),
               eq(checkins.checkInDate, getDateString(getCentralTime())),
-              gt(checkins.queuePosition, nextPlayerCheckin.queuePosition),
+              gt(checkins.queuePosition, nextPlayerOriginalPosition!), // Only decrement those after nextPlayerCheckin,
               eq(checkins.gameId, null) // Only update Next Up players
             )
           );
@@ -930,6 +942,7 @@ export class DatabaseStorage implements IStorage {
           .where(eq(gameSets.id, activeGameSet.id));
 
         console.log('Updated Next Up positions and decremented queue_next_up');
+
       } else {
         // For Away team: Keep existing behavior where everyone shifts up
         console.log('Away team checkout - shifting all positions up');
