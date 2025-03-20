@@ -263,8 +263,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: result.message });
       }
 
-      // Handle the player move in storage
-      await storage.handlePlayerMove(playerId, moveType.toLowerCase());
+      // Handle the player move in storage - pass the moveType as is
+      await storage.handlePlayerMove(playerId, moveType);
       console.log('Player move handled successfully');
 
       // Return the new state
