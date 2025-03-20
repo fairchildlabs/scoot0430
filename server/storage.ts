@@ -189,14 +189,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateGameScore(gameId: number, team1Score: number, team2Score: number): Promise<Game> {
+    console.log(`Updating game ${gameId} with scores: ${team1Score}-${team2Score} and setting state to final`);
+    
+    // Update the game with scores and set state to final
     const [updatedGame] = await db
       .update(games)
       .set({
         team1Score,
-        team2Score
+        team2Score,
+        state: 'final', // Change state to final
+        endTime: getCentralTime() // Add end time
       })
       .where(eq(games.id, gameId))
       .returning();
+      
+    console.log(`Game ${gameId} updated successfully:`, updatedGame);
     return updatedGame;
   }
 
