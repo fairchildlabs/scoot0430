@@ -1288,6 +1288,163 @@ export class DatabaseStorage implements IStorage {
       // Log final state
       const finalState = await this.getCurrentCheckinsState();
       console.log('Final checkins state after BUMP:', finalState);
+    } else if (isMoveType(moveType, 'HORIZONTAL_SWAP')) {
+      if (playerPosition === 'HOME') {
+        console.log(`Processing HOME team HORIZONTAL_SWAP for ${currentCheckin.username}:`, {
+          checkinId: currentCheckin.id,
+          queuePosition: currentCheckin.queuePosition,
+          relativePosition
+        });
+
+        const playersPerTeam = activeGameSet.playersPerTeam;
+        
+        // Calculate position of the corresponding AWAY team player (HOME position + playersPerTeam)
+        const homePosition = currentCheckin.queuePosition;
+        const awayPosition = homePosition + playersPerTeam;
+
+        // Find the AWAY team player to swap with
+        const awayPlayers = await db
+          .select({
+            id: checkins.id,
+            userId: checkins.userId,
+            username: users.username,
+            queuePosition: checkins.queuePosition
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              eq(checkins.queuePosition, awayPosition)
+            )
+          );
+
+        if (awayPlayers.length === 0) {
+          console.log(`No AWAY team player found at position ${awayPosition} for HORIZONTAL_SWAP`);
+          return;
+        }
+
+        // Get the AWAY team player
+        const awayPlayer = awayPlayers[0];
+        console.log(`Found AWAY team player for HORIZONTAL_SWAP:`, {
+          username: awayPlayer.username,
+          queuePosition: awayPlayer.queuePosition
+        });
+
+        console.log(`Swapping positions horizontally:`, {
+          homePlayer: {
+            username: currentCheckin.username,
+            from: homePosition,
+            to: awayPosition
+          },
+          awayPlayer: {
+            username: awayPlayer.username,
+            from: awayPosition,
+            to: homePosition
+          }
+        });
+
+        // Update the HOME player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: awayPosition
+          })
+          .where(eq(checkins.id, currentCheckin.id));
+
+        // Update the AWAY player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: homePosition
+          })
+          .where(eq(checkins.id, awayPlayer.id));
+
+        console.log(`HORIZONTAL_SWAP operation completed successfully`);
+      } else if (playerPosition === 'AWAY') {
+        console.log(`Processing AWAY team HORIZONTAL_SWAP for ${currentCheckin.username}:`, {
+          checkinId: currentCheckin.id,
+          queuePosition: currentCheckin.queuePosition,
+          relativePosition
+        });
+
+        const playersPerTeam = activeGameSet.playersPerTeam;
+        
+        // Calculate position of the corresponding HOME team player (AWAY position - playersPerTeam)
+        const awayPosition = currentCheckin.queuePosition;
+        const homePosition = awayPosition - playersPerTeam;
+
+        // Find the HOME team player to swap with
+        const homePlayers = await db
+          .select({
+            id: checkins.id,
+            userId: checkins.userId,
+            username: users.username,
+            queuePosition: checkins.queuePosition
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              eq(checkins.checkInDate, getDateString(getCentralTime())),
+              eq(checkins.queuePosition, homePosition)
+            )
+          );
+
+        if (homePlayers.length === 0) {
+          console.log(`No HOME team player found at position ${homePosition} for HORIZONTAL_SWAP`);
+          return;
+        }
+
+        // Get the HOME team player
+        const homePlayer = homePlayers[0];
+        console.log(`Found HOME team player for HORIZONTAL_SWAP:`, {
+          username: homePlayer.username,
+          queuePosition: homePlayer.queuePosition
+        });
+
+        console.log(`Swapping positions horizontally:`, {
+          awayPlayer: {
+            username: currentCheckin.username,
+            from: awayPosition,
+            to: homePosition
+          },
+          homePlayer: {
+            username: homePlayer.username,
+            from: homePosition,
+            to: awayPosition
+          }
+        });
+
+        // Update the AWAY player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: homePosition
+          })
+          .where(eq(checkins.id, currentCheckin.id));
+
+        // Update the HOME player position
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: awayPosition
+          })
+          .where(eq(checkins.id, homePlayer.id));
+
+        console.log(`HORIZONTAL_SWAP operation completed successfully`);
+      } else {
+        console.log(`HORIZONTAL_SWAP not applicable for NEXT_UP player ${currentCheckin.username}`);
+        return;
+      }
+
+      // Log final state
+      const finalState = await this.getCurrentCheckinsState();
+      console.log('Final checkins state after HORIZONTAL_SWAP:', finalState);
     }
   }
 
