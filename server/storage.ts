@@ -1531,46 +1531,64 @@ export class DatabaseStorage implements IStorage {
       .orderBy(checkins.queuePosition)
       .limit(1);
 
-    if (!nextPlayerCheckin) {
+    if (nextPlayerCheckin) {
+      // We have a replacement player
+      // Store next player's original position for decrementing logic
+      const nextPlayerOriginalPosition = nextPlayerCheckin.queuePosition;
+
+      console.log('AWAY team replacement details:', {
+        checkedOutPosition,
+        nextPlayerUsername: nextPlayerCheckin.username,
+        nextPlayerOriginalPosition
+      });
+
+      // Update next player with game info and checked-out position
+      await db
+        .update(checkins)
+        .set({
+          gameId: currentCheckin.gameId,
+          team: currentCheckin.team,
+          queuePosition: checkedOutPosition
+        })
+        .where(eq(checkins.id, nextPlayerCheckin.id));
+
+      console.log(`Updated next player ${nextPlayerCheckin.username} to inherit position ${checkedOutPosition}`);
+
+      // Update queue positions for all players after the next player
+      await db
+        .update(checkins)
+        .set({
+          queuePosition: sql`${checkins.queuePosition} - 1`
+        })
+        .where(
+          and(
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id),
+            eq(checkins.checkInDate, getDateString(getCentralTime())),
+            gt(checkins.queuePosition, nextPlayerOriginalPosition)
+          )
+        );
+    } else {
       console.log('No available player for replacement');
-      return; //Return early if no next player
+      
+      // Even without a replacement, we need to decrement higher queue positions
+      // Decrement queue positions for all active players with positions higher than the checked out player
+      await db
+        .update(checkins)
+        .set({
+          queuePosition: sql`${checkins.queuePosition} - 1`
+        })
+        .where(
+          and(
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id),
+            eq(checkins.checkInDate, getDateString(getCentralTime())),
+            gt(checkins.queuePosition, checkedOutPosition)
+          )
+        );
+      
+      console.log(`Decremented queue positions for all players after position ${checkedOutPosition}`);
     }
-
-    // Store next player's original position for decrementing logic
-    const nextPlayerOriginalPosition = nextPlayerCheckin.queuePosition;
-
-    console.log('AWAY team replacement details:', {
-      checkedOutPosition,
-      nextPlayerUsername: nextPlayerCheckin.username,
-      nextPlayerOriginalPosition
-    });
-
-    // Update next player with game info and checked-out position
-    await db
-      .update(checkins)
-      .set({
-        gameId: currentCheckin.gameId,
-        team: currentCheckin.team,
-        queuePosition: checkedOutPosition
-      })
-      .where(eq(checkins.id, nextPlayerCheckin.id));
-
-    console.log(`Updated next player ${nextPlayerCheckin.username} to inherit position ${checkedOutPosition}`);
-
-    // Update queue positions for all players after the next player
-    await db
-      .update(checkins)
-      .set({
-        queuePosition: sql`${checkins.queuePosition} - 1`
-      })
-      .where(
-        and(
-          eq(checkins.isActive, true),
-          eq(checkins.gameSetId, activeGameSet.id),
-          eq(checkins.checkInDate, getDateString(getCentralTime())),
-          gt(checkins.queuePosition, nextPlayerCheckin.queuePosition)
-        )
-      );
 
     // Decrement game set's queue_next_up
     await db
