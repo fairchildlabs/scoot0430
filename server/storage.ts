@@ -892,19 +892,37 @@ export class DatabaseStorage implements IStorage {
     // Handle different move types
     if (isMoveType(moveType, "CHECKOUT")) {
       // Checkout logic varies based on the player's current position
-      if (currentCheckin.gameId) {
+      if (currentCheckin.gameId !== null) {
+        // Player is assigned to a game - do game checkout
         if (currentCheckin.team === 1) {
           // HOME team checkout
-          await this.handleHomeTeamCheckout(currentCheckin, state.activeGameSet);
+          // Cast is needed because TypeScript doesn't recognize the null check above
+          await this.handleHomeTeamCheckout({
+            id: currentCheckin.id,
+            gameId: currentCheckin.gameId as number,
+            team: currentCheckin.team,
+            queuePosition: currentCheckin.queuePosition,
+            username: currentCheckin.username
+          }, state.activeGameSet);
           result.message = `${currentCheckin.username} checked out from HOME team`;
         } else if (currentCheckin.team === 2) {
           // AWAY team checkout
-          await this.handleAwayTeamCheckout(currentCheckin, state.activeGameSet);
+          await this.handleAwayTeamCheckout({
+            id: currentCheckin.id,
+            gameId: currentCheckin.gameId as number,
+            team: currentCheckin.team,
+            queuePosition: currentCheckin.queuePosition,
+            username: currentCheckin.username
+          }, state.activeGameSet);
           result.message = `${currentCheckin.username} checked out from AWAY team`;
         }
       } else {
         // NEXT UP checkout
-        await this.handleQueuePlayerCheckout(currentCheckin, state.activeGameSet);
+        await this.handleQueuePlayerCheckout({
+          id: currentCheckin.id,
+          queuePosition: currentCheckin.queuePosition,
+          username: currentCheckin.username
+        }, state.activeGameSet);
         result.message = `${currentCheckin.username} checked out from NEXT UP`;
       }
     } 
@@ -1082,7 +1100,9 @@ export class DatabaseStorage implements IStorage {
         team: checkins.team,
         queuePosition: checkins.queuePosition,
         username: users.username,
-        type: checkins.type
+        type: checkins.type,
+        birthYear: users.birthYear,
+        autoup: users.autoup
       })
       .from(checkins)
       .innerJoin(users, eq(checkins.userId, users.id))
@@ -1097,7 +1117,16 @@ export class DatabaseStorage implements IStorage {
     // Categorize players
     const homeTeamPlayers = allCheckins.filter(c => c.team === 1);
     const awayTeamPlayers = allCheckins.filter(c => c.team === 2);
-    const nextUpPlayers = allCheckins.filter(c => c.gameId === null && c.team === null);
+    
+    // NEXT UP players (not assigned to a game)
+    const nextUpPlayers = allCheckins.filter(c => c.gameId === null);
+    
+    // Log for debugging
+    console.log('Current check-ins state:', {
+      homeTeamCount: homeTeamPlayers.length,
+      awayTeamCount: awayTeamPlayers.length,
+      nextUpCount: nextUpPlayers.length
+    });
     
     return {
       activeGameSet,
