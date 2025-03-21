@@ -319,29 +319,51 @@ export class DatabaseStorage implements IStorage {
 
       console.log('Found promoted players:', promotedPlayers.map(p => p.userId));
 
-      // Find the highest queue position in current active NEXT UP players
-      const [highestPosition] = await db
+      // Find ALL active checkins to determine the highest queue position
+      // We need a complete sequence of positions without gaps
+      const [highestOverallPosition] = await db
         .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
         .from(checkins)
         .where(
           and(
             eq(checkins.isActive, true),
-            eq(checkins.gameSetId, activeGameSet.id),
-            isNull(checkins.gameId) // Only consider NEXT UP players
+            eq(checkins.gameSetId, activeGameSet.id)
           )
         );
       
-      // Determine where to insert promoted players
-      // If there are waiting players, insert them at the beginning of the waiting list
-      // If no waiting players, insert them at positions 9, 10, 11, 12...
-      const baseQueuePosition = highestPosition?.maxPosition 
-        ? Math.min(9, (highestPosition.maxPosition as number) - promotedPlayers.length + 1)
-        : (activeGameSet.playersPerTeam * 2) + 1; // Default to position 9 (first after teams)
+      // Find the lowest position in the NEXT UP players 
+      // This tells us where the NEXT UP queue starts
+      const nextUpPlayers = await db
+        .select({
+          queuePosition: checkins.queuePosition
+        })
+        .from(checkins)
+        .where(
+          and(
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id),
+            isNull(checkins.gameId) // Only NEXT UP players
+          )
+        )
+        .orderBy(asc(checkins.queuePosition));
+        
+      // Calculate the base position for promoted players
+      let baseQueuePosition;
+      if (nextUpPlayers.length > 0) {
+        // Get the lowest NEXT UP position - we'll insert at this position 
+        // and push existing players up
+        baseQueuePosition = nextUpPlayers[0].queuePosition;
+      } else {
+        // No NEXT UP players, insert right after HOME/AWAY team positions
+        baseQueuePosition = (activeGameSet.playersPerTeam * 2) + 1; // Position 9
+      }
       
-      console.log(`Found highest queue position ${highestPosition?.maxPosition}, inserting promoted players at ${baseQueuePosition}`);
+      console.log(`Promotion: Found highest overall position ${highestOverallPosition?.maxPosition}, ` + 
+        `and ${nextUpPlayers.length} NEXT UP players starting at position ${nextUpPlayers.length > 0 ? nextUpPlayers[0].queuePosition : 'N/A'}. ` +
+        `Will insert promoted players at position ${baseQueuePosition}.`);
       
       // First make room by incrementing queue positions for affected waiting players
-      if (highestPosition?.maxPosition) {
+      if (nextUpPlayers.length > 0) {
         await db
           .update(checkins)
           .set({
