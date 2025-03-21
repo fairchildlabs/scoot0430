@@ -444,36 +444,56 @@ export class DatabaseStorage implements IStorage {
       console.log('Non-promoted player IDs that might be eligible for auto-recheckin:', nonPromotedUserIds);
       
       if (nonPromotedUserIds.length > 0) {
-        // Get users with autoup=TRUE along with their current queue positions
-        // to preserve their relative order 
-        const autoUpUsersQuery = await db
+        // First get all users with autoup=TRUE from this game's players
+        const autoUpUsersBase = await db
           .select({
             id: users.id,
             username: users.username,
-            autoup: users.autoup,
-            queuePosition: checkins.queuePosition
+            autoup: users.autoup
           })
           .from(users)
-          .innerJoin(checkins, eq(users.id, checkins.userId))
           .where(
             and(
               inArray(users.id, nonPromotedUserIds),
-              eq(users.autoup, true),
-              eq(checkins.gameId, gameId), // Only get positions from this game
-              eq(checkins.isActive, true)  // Make sure they're active
+              eq(users.autoup, true)
+            )
+          );
+        
+        console.log('Found users with autoup=true:', autoUpUsersBase.map(u => u.username));
+        
+        // Get the current game's checkins for these users to determine their original positions
+        // This helps maintain the relative ordering of players
+        const gameCheckins = await db
+          .select({
+            userId: checkins.userId,
+            queuePosition: checkins.queuePosition
+          })
+          .from(checkins)
+          .where(
+            and(
+              inArray(checkins.userId, autoUpUsersBase.map(u => u.id)),
+              eq(checkins.gameId, gameId),
+              eq(checkins.isActive, true)
             )
           )
-          .orderBy(asc(checkins.queuePosition)); // Preserve order
+          .orderBy(asc(checkins.queuePosition));
         
-        // Extract user info only, maintaining the same order
-        const autoUpUsers = autoUpUsersQuery.map(user => ({
-          id: user.id,
-          username: user.username,
-          autoup: user.autoup
-        }));
+        // Combine the user info with their positions
+        const autoUpUsers = autoUpUsersBase
+          .map(user => {
+            const checkin = gameCheckins.find(c => c.userId === user.id);
+            return {
+              id: user.id,
+              username: user.username,
+              autoup: user.autoup,
+              originalPosition: checkin?.queuePosition || 999 // Use high number if position unknown
+            };
+          })
+          // Sort by their original positions to maintain order
+          .sort((a, b) => a.originalPosition - b.originalPosition);
         
         console.log('Auto-up users found in order:', 
-          autoUpUsersQuery.map(u => `${u.username} (Pos: ${u.queuePosition || 'N/A'})`)
+          autoUpUsers.map(u => `${u.username} (Pos: ${u.originalPosition})`)
         );
         
         console.log('Auto-up users found:', autoUpUsers.map(u => u.username));
