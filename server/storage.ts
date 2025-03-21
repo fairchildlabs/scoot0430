@@ -156,20 +156,36 @@ export class DatabaseStorage implements IStorage {
     const [gameSet] = await db.select().from(gameSets).where(eq(gameSets.id, setId));
     if (!gameSet) throw new Error(`Game set ${setId} not found`);
     
-    // Calculate new current queue position by incrementing the current value by (players_per_team * 2)
-    // This way queue positions will be properly incremented after each game
+    // The currentQueuePosition should be set to the next position after the last player in the NEXT UP list
+    // It should NOT be automatically increased by players_per_team * 2
     const playersPerTeam = gameSet.playersPerTeam || 4;
-    const incrementAmount = playersPerTeam * 2;
-    const newQueuePosition = gameSet.currentQueuePosition + incrementAmount;
     
-    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${newQueuePosition} (incrementing by ${incrementAmount})`);
+    // Find the highest queue position in the NEXT UP list
+    const [highestPosition] = await db
+      .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
+      .from(checkins)
+      .where(
+        and(
+          eq(checkins.gameSetId, setId),
+          eq(checkins.isActive, true),
+          isNull(checkins.gameId)
+        )
+      );
+    
+    // Set currentQueuePosition to the next position after the highest in NEXT UP
+    // If no waiting players, set to 9 (first position after HOME/AWAY teams)
+    const nextQueuePosition = highestPosition?.maxPosition 
+      ? (highestPosition.maxPosition as number) + 1 
+      : (playersPerTeam * 2) + 1; // Default to position 9 if no waiting players
+    
+    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${nextQueuePosition} based on highest queue position ${highestPosition?.maxPosition}`);
 
     // First update the game set's currentQueuePosition
     await db
       .update(gameSets)
       .set({
-        currentQueuePosition: newQueuePosition,
-        queueNextUp: gameSet.queueNextUp // Update this when we increment for new checkins
+        currentQueuePosition: nextQueuePosition,
+        queueNextUp: nextQueuePosition // Update this to track tail of queue
       })
       .where(eq(gameSets.id, setId));
       
@@ -263,21 +279,45 @@ export class DatabaseStorage implements IStorage {
 
       console.log('Found promoted players:', promotedPlayers.map(p => p.userId));
 
-      // First increment queue positions for all active checkins after the current queue position
-      await db
-        .update(checkins)
-        .set({
-          queuePosition: sql`${checkins.queuePosition} + ${activeGameSet.playersPerTeam}`
-        })
+      // Find the highest queue position in current active NEXT UP players
+      const [highestPosition] = await db
+        .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
+        .from(checkins)
         .where(
           and(
             eq(checkins.isActive, true),
             eq(checkins.gameSetId, activeGameSet.id),
-            sql`${checkins.queuePosition} >= ${activeGameSet.currentQueuePosition}`
+            isNull(checkins.gameId) // Only consider NEXT UP players
           )
         );
+      
+      // Determine where to insert promoted players
+      // If there are waiting players, insert them at the beginning of the waiting list
+      // If no waiting players, insert them at positions 9, 10, 11, 12...
+      const baseQueuePosition = highestPosition?.maxPosition 
+        ? Math.min(9, (highestPosition.maxPosition as number) - promotedPlayers.length + 1)
+        : (activeGameSet.playersPerTeam * 2) + 1; // Default to position 9 (first after teams)
+      
+      console.log(`Found highest queue position ${highestPosition?.maxPosition}, inserting promoted players at ${baseQueuePosition}`);
+      
+      // First make room by incrementing queue positions for affected waiting players
+      if (highestPosition?.maxPosition) {
+        await db
+          .update(checkins)
+          .set({
+            queuePosition: sql`${checkins.queuePosition} + ${promotedPlayers.length}`
+          })
+          .where(
+            and(
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id),
+              isNull(checkins.gameId), // Only update NEXT UP players
+              sql`${checkins.queuePosition} >= ${baseQueuePosition}` // Only update positions at or after insert point
+            )
+          );
+      }
 
-      // Then create new checkins for promoted team players
+      // Then create new checkins for promoted team players at sequential positions
       for (let i = 0; i < promotedPlayers.length; i++) {
         const player = promotedPlayers[i];
         await db
@@ -289,11 +329,13 @@ export class DatabaseStorage implements IStorage {
             isActive: true,
             checkInDate: getDateString(getCentralTime()),
             gameSetId: activeGameSet.id,
-            queuePosition: activeGameSet.currentQueuePosition + i,
+            queuePosition: baseQueuePosition + i, // Sequential positions
             type: promotionInfo.type,
             gameId: null,
             team: player.team
           });
+        
+        console.log(`Created checkin for promoted player ${player.userId} at position ${baseQueuePosition + i}`);
       }
     }
 
@@ -358,19 +400,36 @@ export class DatabaseStorage implements IStorage {
         console.log('Auto-up users found:', autoUpUsers.map(u => u.username));
         
         if (autoUpUsers.length > 0) {
-          // Find the highest queue position
+          // Find the highest queue position for active players in the NEXT UP list
           const [highestPosition] = await db
             .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
             .from(checkins)
-            .where(eq(checkins.isActive, true));
+            .where(
+              and(
+                eq(checkins.isActive, true),
+                isNull(checkins.gameId), // Only consider NEXT UP players
+                eq(checkins.gameSetId, activeGameSet.id)
+              )
+            );
           
-          // Use highest position + 1 or current position if no active checkins
-          let nextPosition = (highestPosition?.maxPosition as number) ? (highestPosition.maxPosition as number) + 1 : activeGameSet.currentQueuePosition;
+          // Use highest position + 1 for consecutive positions, or default to position 9 if no NEXT UP players
+          // This ensures players are always added to the tail of the queue in consecutive positions
+          let nextPosition = highestPosition?.maxPosition 
+            ? (highestPosition.maxPosition as number) + 1 
+            : (activeGameSet.playersPerTeam * 2) + 1; // Default to position 9 if no NEXT UP players
+          
+          console.log(`Auto-recheckin: found highest queue position ${highestPosition?.maxPosition}, inserting auto-up players at ${nextPosition}`);
           
           // Update the queueNextUp in the game set to track the tail of the queue
           await db
             .update(gameSets)
-            .set({ queueNextUp: nextPosition + autoUpUsers.length })
+            .set({ 
+              queueNextUp: nextPosition + autoUpUsers.length,
+              // Only update currentQueuePosition if it's incorrectly set
+              ...(activeGameSet.currentQueuePosition > nextPosition + autoUpUsers.length 
+                ? { currentQueuePosition: nextPosition + autoUpUsers.length } 
+                : {})
+            })
             .where(eq(gameSets.id, activeGameSet.id));
           
           // Create new checkins for autoup users
