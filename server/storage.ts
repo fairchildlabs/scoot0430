@@ -58,7 +58,7 @@ export interface IStorage {
   getAllGameSets(): Promise<GameSet[]>;
   deactivateGameSet(setId: number): Promise<void>;
   createGamePlayer(gameId: number, userId: number, team: number): Promise<GamePlayer>;
-  getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number })[] }>;
+  getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number | null })[] }>;
   getGameSetLog(gameSetId: number): Promise<any[]>;
   determinePromotionType(gameId: number): Promise<{ type: 'win_promoted' | 'loss_promoted', team: 1 | 2 } | null>;
   handlePlayerMove(userId: number, moveType: string): Promise<{message: string, details: any}>;
