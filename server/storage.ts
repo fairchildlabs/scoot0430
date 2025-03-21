@@ -156,18 +156,20 @@ export class DatabaseStorage implements IStorage {
     const [gameSet] = await db.select().from(gameSets).where(eq(gameSets.id, setId));
     if (!gameSet) throw new Error(`Game set ${setId} not found`);
     
-    // Calculate new current queue position (should be players_per_team * 2 + 1)
-    // This ensures positions 1-8 (for 4 per team) are assigned to game players
+    // Calculate new current queue position by incrementing the current value by (players_per_team * 2)
+    // This way queue positions will be properly incremented after each game
     const playersPerTeam = gameSet.playersPerTeam || 4;
-    const newQueuePosition = (playersPerTeam * 2) + 1;
+    const incrementAmount = playersPerTeam * 2;
+    const newQueuePosition = gameSet.currentQueuePosition + incrementAmount;
     
-    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${newQueuePosition}`);
+    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${newQueuePosition} (incrementing by ${incrementAmount})`);
 
     // First update the game set's currentQueuePosition
     await db
       .update(gameSets)
       .set({
-        currentQueuePosition: newQueuePosition
+        currentQueuePosition: newQueuePosition,
+        queueNextUp: gameSet.queueNextUp // Update this when we increment for new checkins
       })
       .where(eq(gameSets.id, setId));
       
@@ -362,7 +364,14 @@ export class DatabaseStorage implements IStorage {
             .from(checkins)
             .where(eq(checkins.isActive, true));
           
+          // Use highest position + 1 or current position if no active checkins
           let nextPosition = (highestPosition?.maxPosition as number) ? (highestPosition.maxPosition as number) + 1 : activeGameSet.currentQueuePosition;
+          
+          // Update the queueNextUp in the game set to track the tail of the queue
+          await db
+            .update(gameSets)
+            .set({ queueNextUp: nextPosition + autoUpUsers.length })
+            .where(eq(gameSets.id, activeGameSet.id));
           
           // Create new checkins for autoup users
           for (const user of autoUpUsers) {
@@ -698,10 +707,14 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
-    // Update the game set's current queue position
+    // Update the game set's current queue position and queueNextUp
+    // queueNextUp should track the tail of the queue (highest position used)
     await db
       .update(gameSets)
-      .set({ currentQueuePosition: activeGameSet.currentQueuePosition + 1 })
+      .set({ 
+        currentQueuePosition: activeGameSet.currentQueuePosition + 1,
+        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is now the tail position
+      })
       .where(eq(gameSets.id, activeGameSet.id));
 
     return checkin;
