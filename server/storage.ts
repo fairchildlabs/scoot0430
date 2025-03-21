@@ -152,16 +152,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGame(setId: number, court: string, state: string): Promise<Game> {
-    // Get the game set to access playersPerTeam for updating currentQueuePosition
+    // Get the game set to access playersPerTeam for updating currentQueuePosition and other settings
     const [gameSet] = await db.select().from(gameSets).where(eq(gameSets.id, setId));
     if (!gameSet) throw new Error(`Game set ${setId} not found`);
     
-    // The currentQueuePosition should be set to the next position after the last player in the NEXT UP list
-    // It should NOT be automatically increased by players_per_team * 2
-    const playersPerTeam = gameSet.playersPerTeam || 4;
+    // We need to know what the highest queue position is currently in use
+    // This includes players in active games and waiting in NEXT UP
+    const [highestOverallPosition] = await db
+      .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
+      .from(checkins)
+      .where(
+        and(
+          eq(checkins.gameSetId, setId),
+          eq(checkins.isActive, true)
+        )
+      );
     
-    // Find the highest queue position in the NEXT UP list
-    const [highestPosition] = await db
+    // Find the highest queue position in the NEXT UP list specifically
+    const [highestNextUpPosition] = await db
       .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
       .from(checkins)
       .where(
@@ -172,20 +180,30 @@ export class DatabaseStorage implements IStorage {
         )
       );
     
-    // Set currentQueuePosition to the next position after the highest in NEXT UP
-    // If no waiting players, set to 9 (first position after HOME/AWAY teams)
-    const nextQueuePosition = highestPosition?.maxPosition 
-      ? (highestPosition.maxPosition as number) + 1 
-      : (playersPerTeam * 2) + 1; // Default to position 9 if no waiting players
+    // Calculate the next queue position after the current highest overall
+    // This ensures we always have unique, sequential positions across all games
+    const nextQueuePosition = highestOverallPosition?.maxPosition 
+      ? (highestOverallPosition.maxPosition as number) + 1 
+      : 1; // Start at 1 if no positions used yet
     
-    console.log(`Updating game set ${setId} current_queue_position from ${gameSet.currentQueuePosition} to ${nextQueuePosition} based on highest queue position ${highestPosition?.maxPosition}`);
+    // Calculate next position for NEXT UP players
+    // If there are no NEXT UP players, this will start after the game players
+    const nextUpQueuePosition = highestNextUpPosition?.maxPosition 
+      ? (highestNextUpPosition.maxPosition as number) + 1 
+      : nextQueuePosition;
+    
+    console.log(`Game creation: Highest overall position ${highestOverallPosition?.maxPosition}, ` +
+      `highest NEXT UP position ${highestNextUpPosition?.maxPosition}, ` +
+      `setting currentQueuePosition to ${nextQueuePosition} and queueNextUp to ${nextUpQueuePosition}`);
 
-    // First update the game set's currentQueuePosition
+    // Update the game set's queue position trackers
     await db
       .update(gameSets)
       .set({
+        // currentQueuePosition tracks the next position to be used
         currentQueuePosition: nextQueuePosition,
-        queueNextUp: nextQueuePosition // Update this to track tail of queue
+        // queueNextUp tracks the next position for NEXT UP players
+        queueNextUp: nextUpQueuePosition
       })
       .where(eq(gameSets.id, setId));
       
@@ -263,19 +281,41 @@ export class DatabaseStorage implements IStorage {
     let promotedPlayers: { userId: number; team: number }[] = [];
 
     if (promotionInfo) {
-      // Get players from the promoted team
-      promotedPlayers = await db
+      // Get players from the promoted team along with their current queue positions
+      // We need to preserve their relative order
+      const promotedPlayersResult = await db
         .select({
           userId: gamePlayers.userId,
-          team: gamePlayers.team
+          team: gamePlayers.team,
+          username: users.username,
+          queuePosition: checkins.queuePosition
         })
         .from(gamePlayers)
+        .innerJoin(users, eq(gamePlayers.userId, users.id))
+        .leftJoin(checkins, 
+          and(
+            eq(gamePlayers.userId, checkins.userId),
+            eq(checkins.gameId, gameId)
+          )
+        )
         .where(
           and(
             eq(gamePlayers.gameId, gameId),
             eq(gamePlayers.team, promotionInfo.team)
           )
-        );
+        )
+        .orderBy(asc(checkins.queuePosition)); // Preserve original order
+
+      // Extract the required fields and keep the relative order
+      promotedPlayers = promotedPlayersResult.map(player => ({
+        userId: player.userId,
+        team: player.team
+      }));
+      
+      // Log the order of promotion
+      console.log('Promoting players in this order:', 
+        promotedPlayersResult.map(p => `${p.username} (Pos: ${p.queuePosition || 'N/A'})`)
+      );
 
       console.log('Found promoted players:', promotedPlayers.map(p => p.userId));
 
@@ -382,20 +422,37 @@ export class DatabaseStorage implements IStorage {
       console.log('Non-promoted player IDs that might be eligible for auto-recheckin:', nonPromotedUserIds);
       
       if (nonPromotedUserIds.length > 0) {
-        // Get users with autoup=TRUE
-        const autoUpUsers = await db
+        // Get users with autoup=TRUE along with their current queue positions
+        // to preserve their relative order 
+        const autoUpUsersQuery = await db
           .select({
             id: users.id,
             username: users.username,
-            autoup: users.autoup
+            autoup: users.autoup,
+            queuePosition: checkins.queuePosition
           })
           .from(users)
+          .innerJoin(checkins, eq(users.id, checkins.userId))
           .where(
             and(
               inArray(users.id, nonPromotedUserIds),
-              eq(users.autoup, true)
+              eq(users.autoup, true),
+              eq(checkins.gameId, gameId), // Only get positions from this game
+              eq(checkins.isActive, true)  // Make sure they're active
             )
-          );
+          )
+          .orderBy(asc(checkins.queuePosition)); // Preserve order
+        
+        // Extract user info only, maintaining the same order
+        const autoUpUsers = autoUpUsersQuery.map(user => ({
+          id: user.id,
+          username: user.username,
+          autoup: user.autoup
+        }));
+        
+        console.log('Auto-up users found in order:', 
+          autoUpUsersQuery.map(u => `${u.username} (Pos: ${u.queuePosition || 'N/A'})`)
+        );
         
         console.log('Auto-up users found:', autoUpUsers.map(u => u.username));
         
@@ -1002,7 +1059,8 @@ export class DatabaseStorage implements IStorage {
         gameId: checkins.gameId,
         team: checkins.team,
         queuePosition: checkins.queuePosition,
-        username: users.username
+        username: users.username,
+        type: checkins.type
       })
       .from(checkins)
       .innerJoin(users, eq(checkins.userId, users.id))
