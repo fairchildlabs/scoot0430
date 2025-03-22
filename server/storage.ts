@@ -282,7 +282,7 @@ export class DatabaseStorage implements IStorage {
     console.log('Queue position calculation:', {
       playersPerTeam: activeGameSet.playersPerTeam,
       gamesFinished,
-      formula: `(${activeGameSet.playersPerTeam} * 2 * (${gamesFinished} + 1)) + 1 = ${correctQueuePosition}`
+      formula: `(${activeGameSet.playersPerTeam} * 2 * ${gamesFinished}) + 1 = ${correctQueuePosition}`
     });
     const correctNextUpPosition = correctQueuePosition + (activeGameSet.playersPerTeam * 2);
     
@@ -990,6 +990,34 @@ export class DatabaseStorage implements IStorage {
     
     if (!state.activeGameSet) {
       throw new Error("No active game set available");
+    }
+    
+    // FIRST: Fix any incorrect currentQueuePosition values in the active game set
+    // This ensures our formula fix takes effect immediately without waiting for the next game to finish
+    if (state.activeGameSet.currentQueuePosition > 50) { // Likely using the wrong formula if > 50
+      // Count completed games to determine the correct position
+      const completedGamesCount = await db
+        .select({ count: sql`COUNT(*)` })
+        .from(games)
+        .where(
+          and(
+            eq(games.setId, state.activeGameSet.id),
+            eq(games.state, 'final')
+          )
+        );
+        
+      const countResult = completedGamesCount?.[0]?.count;
+      const gamesFinished = Number(countResult || 0);
+      // Apply the corrected formula
+      const correctQueuePosition = (state.activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
+      
+      console.log(`Correcting queue position from ${state.activeGameSet.currentQueuePosition} to ${correctQueuePosition} based on ${gamesFinished} finished games`);
+      
+      // Update the game set with the correct queue position
+      await db
+        .update(gameSets)
+        .set({ currentQueuePosition: correctQueuePosition })
+        .where(eq(gameSets.id, state.activeGameSet.id));
     }
     
     // Make sure all loss_promoted and win_promoted players are marked isActive=true
