@@ -269,24 +269,31 @@ export class DatabaseStorage implements IStorage {
     // After second game: currentQueuePosition = playersPerTeam * 2 * 2 + 1 (17 for 4 players per team)
     // Formula: playersPerTeam * 2 * number_of_games + 1
     
-    // Get count of completed games (including the current game that's finishing)
-    const gamesFinished = Number(completedGamesCount?.count || 0); 
+    // Get count of completed games after this one
+    // Note: completedGamesCount gives games already marked as final
+    // but since the current game is in transition to final, we need to add 1
+    const countResult = Number(completedGamesCount?.count || 0);
+    const gamesCompleted = countResult + 1;
     
-    // To calculate the next queue position correctly:
+    // CRITICAL: correctQueuePosition MUST increment after each game by (playersPerTeam * 2)
     // For 4 players per team:
-    // - After game 1: 9 (4*2 + 1)
+    // - After game 1: 9 (4*2*1 + 1)
     // - After game 2: 17 (4*2*2 + 1)
     // - After game 3: 25 (4*2*3 + 1)
-    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * (gamesFinished)) + 1;
+    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * gamesCompleted) + 1;
+    
+    console.log(`UPDATING QUEUE POSITION: Games completed (including this one): ${gamesCompleted}`);
+    console.log(`Setting currentQueuePosition to ${correctQueuePosition} (formula: ${activeGameSet.playersPerTeam}*2*${gamesCompleted}+1)`);
+    
     
     console.log('Queue position calculation:', {
       playersPerTeam: activeGameSet.playersPerTeam,
-      gamesFinished,
-      formula: `(${activeGameSet.playersPerTeam} * 2 * ${gamesFinished}) + 1 = ${correctQueuePosition}`
+      gamesCompleted,
+      formula: `(${activeGameSet.playersPerTeam} * 2 * ${gamesCompleted}) + 1 = ${correctQueuePosition}`
     });
     const correctNextUpPosition = correctQueuePosition + (activeGameSet.playersPerTeam * 2);
     
-    console.log(`Game ${gameId} finished. Total games completed: ${gamesFinished}.`);
+    console.log(`Game ${gameId} finished. Total games completed: ${gamesCompleted}.`);
     console.log(`Setting current_queue_position to ${correctQueuePosition} and queue_next_up to ${correctNextUpPosition}`);
     
     // Update the game set with corrected queue positions
@@ -1006,7 +1013,7 @@ export class DatabaseStorage implements IStorage {
           )
         );
         
-      const countResult = completedGamesCount?.[0]?.count;
+      const countResult = Number(completedGamesCount?.count || 0);
       const gamesFinished = Number(countResult || 0);
       // Apply the corrected formula
       const correctQueuePosition = (state.activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
