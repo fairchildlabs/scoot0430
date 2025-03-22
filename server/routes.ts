@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { insertGameSetSchema, games, checkins, users, gameSets, gamePlayers } from "@shared/schema";
-import { populateGame, movePlayer, type MoveType } from "./game-logic/game-population";
+import { populateGame, movePlayer } from "./game-logic/game-population";
 import { db } from "./db";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { cleanupDuplicateCheckins } from "./cleanup";
