@@ -110,10 +110,10 @@ export class DatabaseStorage implements IStorage {
 
     console.log('getCheckins - Active game set:', { id: activeGameSet.id, currentQueuePosition: activeGameSet.currentQueuePosition });
 
-    // Query for checkins that are:
-    // 1. Associated with the current active game set
-    // 2. For the specified club
-    // 3. Currently active
+    // Query for two types of checkins:
+    // 1. Regular active checkins associated with the current game set
+    // 2. Any win_promoted/loss_promoted checkins that might still be inactive
+    //    but should be displayed in the NEXT UP list
     const result = await db
       .select({
         id: checkins.id,
@@ -134,8 +134,23 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(checkins.clubIndex, clubIndex),
-          eq(checkins.isActive, true),
-          eq(checkins.gameSetId, activeGameSet.id) // Filter by current active game set
+          eq(checkins.gameSetId, activeGameSet.id), // Filter by current active game set
+          or(
+            // Regular active checkins
+            eq(checkins.isActive, true),
+            
+            // Win/loss promoted players that are inactive but should be displayed
+            and(
+              eq(checkins.isActive, false),
+              isNull(checkins.gameId),
+              or(
+                eq(checkins.type, 'win_promoted'),
+                eq(checkins.type, 'loss_promoted')
+              ),
+              // Only include those with positions >= currentQueuePosition (Next Up positions)
+              gte(checkins.queuePosition, activeGameSet.currentQueuePosition)
+            )
+          )
         )
       )
       .orderBy(asc(checkins.queuePosition));
