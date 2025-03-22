@@ -639,20 +639,6 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // Make sure all loss_promoted and win_promoted players have isActive=true
-    // This fixes the issue where they don't show up in the NEXT_UP list
-    await db
-      .update(checkins)
-      .set({ isActive: true })
-      .where(
-        and(
-          inArray(checkins.type, ['loss_promoted', 'win_promoted']),
-          eq(checkins.isActive, false),
-          isNull(checkins.gameId),
-          eq(checkins.gameSetId, activeGameSet.id)
-        )
-      );
-
     // Log the players we just updated
     const updatedPlayers = await db
       .select({
