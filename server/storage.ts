@@ -547,11 +547,9 @@ export class DatabaseStorage implements IStorage {
           await db
             .update(gameSets)
             .set({ 
-              queueNextUp: nextPosition + autoUpUsers.length,
-              // Only update currentQueuePosition if it's incorrectly set
-              ...(activeGameSet.currentQueuePosition > nextPosition + autoUpUsers.length 
-                ? { currentQueuePosition: nextPosition + autoUpUsers.length } 
-                : {})
+              queueNextUp: nextPosition + autoUpUsers.length
+              // We don't update currentQueuePosition here, it should remain at position 9 for NEXT_UP queue
+              // currentQueuePosition should only be incremented when creating a new game, not when finishing a game
             })
             .where(eq(gameSets.id, activeGameSet.id));
           
