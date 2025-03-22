@@ -508,34 +508,12 @@ const NewGamePage = () => {
                 <CourtSelection />
               </div>
               
-              {/* Player distribution visualization */}
-              <div className="space-y-2 py-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Player Distribution</span>
+              {/* Player check-in counter */}
+              <div className="py-2">
+                <div className="flex justify-end">
                   <span className="text-xs text-muted-foreground">
                     {playersCheckedIn} player{playersCheckedIn !== 1 ? 's' : ''} checked in
                   </span>
-                </div>
-                <div className="flex gap-1 items-center">
-                  <span className="text-xs w-16">Home: {homePlayers.length}</span>
-                  <Progress 
-                    value={(homePlayers.length / playersNeeded) * 100} 
-                    className="h-2 bg-gray-500" 
-                  />
-                </div>
-                <div className="flex gap-1 items-center">
-                  <span className="text-xs w-16">Away: {awayPlayers.length}</span>
-                  <Progress 
-                    value={(awayPlayers.length / playersNeeded) * 100}
-                    className="h-2 bg-gray-500" 
-                  />
-                </div>
-                <div className="flex gap-1 items-center">
-                  <span className="text-xs w-16">Next Up: {nextUpPlayers.length}</span>
-                  <Progress 
-                    value={(nextUpPlayers.length / (playersCheckedIn || 1)) * 100}
-                    className="h-2 bg-gray-500" 
-                  />
                 </div>
               </div>
 
