@@ -401,31 +401,55 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Deactivate checkins for players who aren't being promoted
-    // We need to keep the promoted players active, but deactivate the rest
+    // Deactivate ALL checkins for this game, regardless of promotion status
+    // For promoted players, we've already created new checkins with the proper positions,
+    // so we need to deactivate their old game check-ins to avoid duplicates
+    await db
+      .update(checkins)
+      .set({ isActive: false })
+      .where(eq(checkins.gameId, gameId));
+      
+    console.log(`Deactivated all checkins for game ${gameId}`);
+      
+    // If we have promoted players, check for any existing active checkins in the queue
+    // that might be duplicates from previous promotions (same userId, gameId=null)
     if (promotionInfo) {
       const promotedUserIds = promotedPlayers.map(p => p.userId);
-      
-      // Only deactivate players from this game who aren't in the promoted list
-      await db
-        .update(checkins)
-        .set({ isActive: false })
+        
+      // Check for any active checkins that might be duplicates 
+      const duplicateCheckins = await db
+        .select({
+          id: checkins.id,
+          userId: checkins.userId,
+          username: users.username,
+          type: checkins.type
+        })
+        .from(checkins)
+        .innerJoin(users, eq(checkins.userId, users.id))
         .where(
           and(
-            eq(checkins.gameId, gameId),
-            notInArray(checkins.userId, promotedUserIds)
+            inArray(checkins.userId, promotedUserIds),
+            isNull(checkins.gameId), // In the queue (Next Up)
+            eq(checkins.isActive, true),
+            eq(checkins.gameSetId, activeGameSet.id)
           )
         );
-      
-      console.log(`Deactivated checkins for non-promoted players from game ${gameId}`);
-    } else {
-      // If there's no promotion, deactivate all checkins for this game
-      await db
-        .update(checkins)
-        .set({ isActive: false })
-        .where(eq(checkins.gameId, gameId));
-        
-      console.log(`Deactivated all checkins for game ${gameId} (no promotion)`);
+          
+      if (duplicateCheckins.length > 0) {
+        console.log(`Found ${duplicateCheckins.length} duplicate checkins to deactivate:`, 
+          duplicateCheckins.map(c => `${c.username} (Type: ${c.type})`));
+            
+        // Deactivate these duplicate checkins
+        await db
+          .update(checkins)
+          .set({ isActive: false })
+          .where(
+            inArray(
+              checkins.id, 
+              duplicateCheckins.map(c => c.id)
+            )
+          );
+      }
     }
       
     // Get all auto-up eligible players and create new active checkins for them
