@@ -57,6 +57,18 @@ export default function HomePage() {
     return (currentYear - birthYear) >= 75;
   };
 
+  // Calculate the correct queue position based on completed games
+  // This ensures we show the right NEXT UP players even if the database value is incorrect
+  const finishedGamesCount = activeGames?.filter(game => game.state === 'final').length || 0;
+  const playersPerTeam = activeGameSet?.playersPerTeam || 4;
+  
+  // Calculate what currentQueuePosition should be based on the number of finished games
+  // Formula: (playersPerTeam * 2 * finishedGamesCount) + 1
+  const calculatedQueuePosition = (playersPerTeam * 2 * finishedGamesCount) + 1;
+  
+  console.log(`Calculating expected queue position: (${playersPerTeam} * 2 * ${finishedGamesCount}) + 1 = ${calculatedQueuePosition}`);
+  console.log(`Database queue position: ${activeGameSet?.currentQueuePosition}`);
+  
   // Split players into active games and next up
   // Include win_promoted and loss_promoted players from positions currentQueuePosition onward
   const nextUpPlayers = checkins?.filter(p => {
@@ -64,10 +76,10 @@ export default function HomePage() {
     const isActiveAndUnassigned = p.isActive && p.gameId === null;
     
     // Also check for any newly promoted players that might still be inactive
-    // They should have a queue position >= currentQueuePosition
+    // They should have a queue position >= calculatedQueuePosition regardless of what's in the database
     const isNewlyPromoted = !p.isActive && p.gameId === null && 
       (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
-      p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
+      p.queuePosition >= calculatedQueuePosition;
     
     return isActiveAndUnassigned || isNewlyPromoted;
   }).sort((a, b) => a.queuePosition - b.queuePosition) || [];
