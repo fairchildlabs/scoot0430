@@ -102,6 +102,24 @@ export default function HomePage() {
     endTime: game.endTime
   })));
   
+  // Debug the active game players for each team
+  const activeGame = activeGames.find(game => game.state === 'started');
+  if (activeGame) {
+    console.log('Active Game Players:', {
+      gameId: activeGame.id,
+      homePlayers: activeGame.players?.filter((p: any) => p.team === 1).map((p: any) => ({
+        username: p.username,
+        queuePosition: p.queuePosition,
+        team: p.team
+      })),
+      awayPlayers: activeGame.players?.filter((p: any) => p.team === 2).map((p: any) => ({
+        username: p.username,
+        queuePosition: p.queuePosition,
+        team: p.team
+      }))
+    });
+  }
+  
   const activeGamesList = activeGames.filter(game => game.state === 'started');
   const finishedGamesList = activeGames.filter(game => game.state === 'final');
 
