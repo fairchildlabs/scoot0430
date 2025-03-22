@@ -6,6 +6,7 @@ import { insertGameSetSchema, games, checkins, users, gameSets, gamePlayers } fr
 import { populateGame, movePlayer, type MoveType } from "./game-logic/game-population";
 import { db } from "./db";
 import { eq, and, sql, asc } from "drizzle-orm";
+import { cleanupDuplicateCheckins } from "./cleanup";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -465,6 +466,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.sendStatus(200);
     } catch (error) {
       console.error('Failed to reset database:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Add a new endpoint to clean up duplicate checkins
+  app.post("/api/database/cleanup", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
+
+    try {
+      console.log('Starting database cleanup process...');
+      await cleanupDuplicateCheckins();
+      console.log('Database cleanup completed');
+      res.sendStatus(200);
+    } catch (error) {
+      console.error('Failed to cleanup database:', error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
