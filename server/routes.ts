@@ -4,6 +4,7 @@ import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { insertGameSetSchema, games, checkins, users, gameSets, gamePlayers } from "@shared/schema";
 import { populateGame, movePlayer } from "./game-logic/game-population";
+import { MoveType } from "./game-logic/types";
 import { db } from "./db";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { cleanupDuplicateCheckins } from "./cleanup";
