@@ -252,6 +252,51 @@ export class DatabaseStorage implements IStorage {
     if (!activeGameSet) {
       throw new Error("No active game set found");
     }
+    
+    // Count completed games for this game set to determine the correct queue positions
+    const [completedGamesCount] = await db
+      .select({ count: sql`COUNT(*)` })
+      .from(games)
+      .where(
+        and(
+          eq(games.setId, activeGameSet.id),
+          eq(games.state, 'final') // Count only finished games
+        )
+      );
+    
+    // Calculate what the queue positions should be based on number of completed games
+    // After first game: currentQueuePosition = playersPerTeam * 2 + 1 (9 for 4 players per team)
+    // After second game: currentQueuePosition = playersPerTeam * 2 * 2 + 1 (17 for 4 players per team)
+    // Formula: playersPerTeam * 2 * number_of_games + 1
+    
+    // Get count of completed games (including the current game that's finishing)
+    const gamesFinished = Number(completedGamesCount?.count || 0); 
+    
+    // To calculate the next queue position correctly:
+    // For 4 players per team:
+    // - After game 1: 9 (4*2 + 1)
+    // - After game 2: 17 (4*2*2 + 1)
+    // - After game 3: 25 (4*2*3 + 1)
+    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * (gamesFinished)) + 1;
+    
+    console.log('Queue position calculation:', {
+      playersPerTeam: activeGameSet.playersPerTeam,
+      gamesFinished,
+      formula: `(${activeGameSet.playersPerTeam} * 2 * ${gamesFinished}) + 1 = ${correctQueuePosition}`
+    });
+    const correctNextUpPosition = correctQueuePosition + (activeGameSet.playersPerTeam * 2);
+    
+    console.log(`Game ${gameId} finished. Total games completed: ${gamesFinished}.`);
+    console.log(`Setting current_queue_position to ${correctQueuePosition} and queue_next_up to ${correctNextUpPosition}`);
+    
+    // Update the game set with corrected queue positions
+    await db
+      .update(gameSets)
+      .set({ 
+        currentQueuePosition: correctQueuePosition,
+        queueNextUp: correctNextUpPosition
+      })
+      .where(eq(gameSets.id, activeGameSet.id));
 
     // Log all active checkins before update
     const activeCheckins = await db
@@ -591,78 +636,6 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Count completed games for this game set to determine the correct queue positions
-    const [completedGamesCount] = await db
-      .select({ count: sql`COUNT(*)` })
-      .from(games)
-      .where(
-        and(
-          eq(games.setId, activeGameSet.id),
-          eq(games.state, 'final') // Count only finished games
-        )
-      );
-    
-    // Calculate what the queue positions should be based on number of completed games
-    // Formula: playersPerTeam * 2 * number_of_games + 1
-    const gamesFinished = Number(completedGamesCount?.count || 0);
-    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
-    const correctNextUpPosition = correctQueuePosition + (activeGameSet.playersPerTeam * 2);
-    
-    console.log(`Game ${gameId} finished. Total games completed: ${gamesFinished}.`);
-    console.log(`Queue position calculation:`, {
-      playersPerTeam: activeGameSet.playersPerTeam,
-      gamesFinished,
-      formula: `(${activeGameSet.playersPerTeam} * 2 * ${gamesFinished}) + 1 = ${correctQueuePosition}`
-    });
-    console.log(`Setting current_queue_position to ${correctQueuePosition} and queue_next_up to ${correctNextUpPosition}`);
-    
-    // Update the game set with corrected queue positions
-    await db
-      .update(gameSets)
-      .set({ 
-        currentQueuePosition: correctQueuePosition,
-        queueNextUp: correctNextUpPosition
-      })
-      .where(eq(gameSets.id, activeGameSet.id));
-    
-    // Make sure all loss_promoted and win_promoted players are marked isActive=true
-    // This fixes the issue where they don't show up in the NEXT_UP list
-    await db
-      .update(checkins)
-      .set({ isActive: true })
-      .where(
-        and(
-          inArray(checkins.type, ['loss_promoted', 'win_promoted']),
-          eq(checkins.isActive, false),
-          isNull(checkins.gameId),
-          eq(checkins.gameSetId, activeGameSet.id)
-        )
-      );
-
-    // Log the players we just updated
-    const updatedPlayers = await db
-      .select({
-        id: checkins.id,
-        username: users.username,
-        type: checkins.type,
-        queuePosition: checkins.queuePosition
-      })
-      .from(checkins)
-      .innerJoin(users, eq(checkins.userId, users.id))
-      .where(
-        and(
-          inArray(checkins.type, ['loss_promoted', 'win_promoted']),
-          eq(checkins.isActive, true),
-          isNull(checkins.gameId),
-          eq(checkins.gameSetId, activeGameSet.id)
-        )
-      );
-    
-    if (updatedPlayers.length > 0) {
-      console.log(`Updated ${updatedPlayers.length} promoted players to isActive=true:`, 
-        updatedPlayers.map(p => `${p.username} (Type: ${p.type}, Position: ${p.queuePosition})`));
-    }
-
     console.log(`Game ${gameId} updated successfully:`, updatedGame);
     return updatedGame;
   }
@@ -983,12 +956,13 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
-    // Update ONLY the queueNextUp value which tracks the tail of the queue
-    // Do NOT update currentQueuePosition as it should only be changed after games finish
+    // Update the game set's current queue position and queueNextUp
+    // queueNextUp should track the tail of the queue (highest position used)
     await db
       .update(gameSets)
       .set({ 
-        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is the next available position
+        currentQueuePosition: activeGameSet.currentQueuePosition + 1,
+        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is now the tail position
       })
       .where(eq(gameSets.id, activeGameSet.id));
 
@@ -1018,32 +992,26 @@ export class DatabaseStorage implements IStorage {
       throw new Error("No active game set available");
     }
     
-    // FIRST: ALWAYS fix currentQueuePosition based on number of completed games
-    // This ensures our formula is correctly applied regardless of the current value
-    // Count completed games to determine the correct position
-    const completedGamesCount = await db
-      .select({ count: sql`COUNT(*)` })
-      .from(games)
-      .where(
-        and(
-          eq(games.setId, state.activeGameSet.id),
-          eq(games.state, 'final')
-        )
-      );
+    // FIRST: Fix any incorrect currentQueuePosition values in the active game set
+    // This ensures our formula fix takes effect immediately without waiting for the next game to finish
+    if (state.activeGameSet.currentQueuePosition > 50) { // Likely using the wrong formula if > 50
+      // Count completed games to determine the correct position
+      const completedGamesCount = await db
+        .select({ count: sql`COUNT(*)` })
+        .from(games)
+        .where(
+          and(
+            eq(games.setId, state.activeGameSet.id),
+            eq(games.state, 'final')
+          )
+        );
+        
+      const countResult = completedGamesCount?.[0]?.count;
+      const gamesFinished = Number(countResult || 0);
+      // Apply the corrected formula
+      const correctQueuePosition = (state.activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
       
-    const countResult = completedGamesCount?.[0]?.count;
-    const gamesFinished = Number(countResult || 0);
-    
-    // Calculate what the queue positions should be based on number of completed games
-    // After first game: currentQueuePosition = playersPerTeam * 2 + 1 (9 for 4 players per team)
-    // After second game: currentQueuePosition = playersPerTeam * 2 * 2 + 1 (17 for 4 players per team)
-    // Formula: playersPerTeam * 2 * gamesFinished + 1
-    const correctQueuePosition = (state.activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
-    
-    // Check if it needs correction
-    if (state.activeGameSet.currentQueuePosition !== correctQueuePosition) {
       console.log(`Correcting queue position from ${state.activeGameSet.currentQueuePosition} to ${correctQueuePosition} based on ${gamesFinished} finished games`);
-      console.log(`Formula: (${state.activeGameSet.playersPerTeam} * 2 * ${gamesFinished}) + 1 = ${correctQueuePosition}`);
       
       // Update the game set with the correct queue position
       await db
