@@ -669,8 +669,17 @@ export class DatabaseStorage implements IStorage {
     // with Home team (team=1) getting positions 1-4 and Away team (team=2) getting positions 5-8
     const playersWithPositions = players.map((player, index) => {
       if (player.queuePosition === null) {
-        // Assign positions 1-4 for HOME team and 5-8 for AWAY team
-        const basePosition = player.team === 1 ? 1 : 5;
+        // Get the game number to determine position offsets
+        // Game 1: Home = 1-4, Away = 5-8
+        // Game 2: Home = 9-12, Away = 13-16
+        // Game 3: Home = 17-20, Away = 21-24, etc.
+        const gameOffset = (gameId - 1) * 8; // 8 players per game (4 home + 4 away)
+        
+        // Assign positions based on game number and team
+        const basePosition = player.team === 1 
+          ? 1 + gameOffset // Home team starts at 1, 9, 17, etc.
+          : 5 + gameOffset; // Away team starts at 5, 13, 21, etc.
+          
         // Find how many players are in the same team before this one
         const teamPlayers = players.filter(p => p.team === player.team);
         const positionInTeam = teamPlayers.findIndex(p => p.userId === player.userId);
