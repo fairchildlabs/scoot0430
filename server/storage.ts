@@ -253,18 +253,36 @@ export class DatabaseStorage implements IStorage {
       throw new Error("No active game set found");
     }
     
-    // Reset current_queue_position to the correct starting value for NEXT_UP players
-    // This should be players_per_team * 2 + 1 (typically 9 for 4 players per team)
+    // Count completed games for this game set to determine the correct nextQueuePosition
+    const [completedGamesCount] = await db
+      .select({ count: sql`COUNT(*)` })
+      .from(games)
+      .where(
+        and(
+          eq(games.setId, activeGameSet.id),
+          eq(games.state, 'final') // Count only finished games
+        )
+      );
+    
+    // Calculate what the next queue position should be based on number of completed games
+    // After first game: playersPerTeam * 2 + 1 (9 for 4 players per team) 
+    // After second game: playersPerTeam * 2 * 2 + 1 (17 for 4 players per team)
+    // Formula: playersPerTeam * 2 * completedGamesCount + 1
+    const gamesFinished = ((completedGamesCount?.count || 0) as number) + 1; // Include current game
     const correctQueuePosition = (activeGameSet.playersPerTeam * 2) + 1;
-    if (activeGameSet.currentQueuePosition !== correctQueuePosition) {
-      console.log(`Resetting current_queue_position from ${activeGameSet.currentQueuePosition} to ${correctQueuePosition}`);
-      await db
-        .update(gameSets)
-        .set({ 
-          currentQueuePosition: correctQueuePosition
-        })
-        .where(eq(gameSets.id, activeGameSet.id));
-    }
+    const correctNextUpPosition = (activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
+    
+    console.log(`Game ${gameId} finished. Total games completed: ${gamesFinished}.`);
+    console.log(`Setting current_queue_position to ${correctQueuePosition} and queue_next_up to ${correctNextUpPosition}`);
+    
+    // Update the game set with corrected queue positions
+    await db
+      .update(gameSets)
+      .set({ 
+        currentQueuePosition: correctQueuePosition,
+        queueNextUp: correctNextUpPosition
+      })
+      .where(eq(gameSets.id, activeGameSet.id));
 
     // Log all active checkins before update
     const activeCheckins = await db
@@ -416,7 +434,7 @@ export class DatabaseStorage implements IStorage {
             userId: player.userId,
             clubIndex: game.clubIndex || 34,
             checkInTime: getCentralTime(),
-            isActive: true,
+            isActive: true, // Always set isActive=true for players in the queue
             checkInDate: getDateString(getCentralTime()),
             gameSetId: activeGameSet.id,
             queuePosition: baseQueuePosition + i, // Sequential positions
