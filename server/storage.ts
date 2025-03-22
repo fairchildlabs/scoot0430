@@ -237,6 +237,19 @@ export class DatabaseStorage implements IStorage {
     if (!activeGameSet) {
       throw new Error("No active game set found");
     }
+    
+    // Reset current_queue_position to the correct starting value for NEXT_UP players
+    // This should be players_per_team * 2 + 1 (typically 9 for 4 players per team)
+    const correctQueuePosition = (activeGameSet.playersPerTeam * 2) + 1;
+    if (activeGameSet.currentQueuePosition !== correctQueuePosition) {
+      console.log(`Resetting current_queue_position from ${activeGameSet.currentQueuePosition} to ${correctQueuePosition}`);
+      await db
+        .update(gameSets)
+        .set({ 
+          currentQueuePosition: correctQueuePosition
+        })
+        .where(eq(gameSets.id, activeGameSet.id));
+    }
 
     // Log all active checkins before update
     const activeCheckins = await db
