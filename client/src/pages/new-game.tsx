@@ -245,11 +245,18 @@ const NewGamePage = () => {
   const currentQueuePos = activeGameSet?.currentQueuePosition || 0;
 
   // Get players eligible for the next game
-  // In our case, just take the first 'playersNeeded' active players without a game
-  const eligiblePlayers = checkins?.filter(p =>
-    p.isActive &&
-    p.gameId === null
-  )
+  // Include both active players without a game and promoted players (even if inactive)
+  const eligiblePlayers = checkins?.filter(p => {
+    // Include all active players without a game
+    const isActiveAndUnassigned = p.isActive && p.gameId === null;
+    
+    // Include promoted players (even if inactive) that should be prioritized in team selection
+    const isPromotedPlayer = !p.isActive && p.gameId === null && 
+      (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
+      p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
+    
+    return isActiveAndUnassigned || isPromotedPlayer;
+  })
   .sort((a, b) => a.queuePosition - b.queuePosition)
   .slice(0, playersNeeded)
   .sort((a, b) => {
@@ -291,10 +298,18 @@ const NewGamePage = () => {
 
   // Get next up players (those after the first 'playersNeeded' players)
   // Take the rest of the players after we've selected the first 'playersNeeded' for teams
-  const nextUpPlayers = checkins?.filter(p =>
-    p.isActive &&
-    p.gameId === null
-  )
+  // Also include win_promoted and loss_promoted players that might be marked as inactive
+  const nextUpPlayers = checkins?.filter(p => {
+    // Check if player is beyond the 'playersNeeded' count (traditional next up)
+    const isInNextUpRange = p.isActive && p.gameId === null;
+    
+    // Check for promoted players that might be inactive but should be displayed
+    const isPromotedPlayer = !p.isActive && p.gameId === null && 
+      (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
+      p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
+    
+    return isInNextUpRange || isPromotedPlayer;
+  })
   .sort((a, b) => a.queuePosition - b.queuePosition)
   .slice(playersNeeded) || [];
 
