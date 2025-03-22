@@ -277,6 +277,11 @@ const NewGamePage = () => {
   let homePlayers: any[] = [];
   let awayPlayers: any[] = [];
 
+  // Calculate the correct queue position based on completed games
+  // This ensures we show the right NEXT UP players even if the database value is incorrect
+  const finishedGamesCount = activeGames?.filter(game => game.state === 'final').length || 0;
+  const playersPerGame = activeGameSet?.playersPerTeam || 4;
+
   // First, assign promoted players to their previous teams
   eligiblePlayers.forEach(player => {
     // Check if player should be on away team based on promotion type or previous team
@@ -301,11 +306,6 @@ const NewGamePage = () => {
       }
     }
   });
-
-  // Calculate the correct queue position based on completed games
-  // This ensures we show the right NEXT UP players even if the database value is incorrect
-  const finishedGamesCount = activeGames?.filter(game => game.state === 'final').length || 0;
-  const playersPerGame = activeGameSet?.playersPerTeam || 4;
   
   // Calculate what currentQueuePosition should be based on the number of finished games
   // Formula: (playersPerTeam * 2 * finishedGamesCount) + 1

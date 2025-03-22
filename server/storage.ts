@@ -983,13 +983,12 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
-    // Update the game set's current queue position and queueNextUp
-    // queueNextUp should track the tail of the queue (highest position used)
+    // Update ONLY the queueNextUp value which tracks the tail of the queue
+    // Do NOT update currentQueuePosition as it should only be changed after games finish
     await db
       .update(gameSets)
       .set({ 
-        currentQueuePosition: activeGameSet.currentQueuePosition + 1,
-        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is now the tail position
+        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is the next available position
       })
       .where(eq(gameSets.id, activeGameSet.id));
 
