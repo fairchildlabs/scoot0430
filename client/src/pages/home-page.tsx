@@ -58,10 +58,19 @@ export default function HomePage() {
   };
 
   // Split players into active games and next up
-  const nextUpPlayers = checkins?.filter(p =>
-    p.isActive &&
-    p.gameId === null
-  ).sort((a, b) => a.queuePosition - b.queuePosition) || [];
+  // Include win_promoted and loss_promoted players from positions currentQueuePosition onward
+  const nextUpPlayers = checkins?.filter(p => {
+    // Include all active players without a game assignment
+    const isActiveAndUnassigned = p.isActive && p.gameId === null;
+    
+    // Also check for any newly promoted players that might still be inactive
+    // They should have a queue position >= currentQueuePosition
+    const isNewlyPromoted = !p.isActive && p.gameId === null && 
+      (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
+      p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
+    
+    return isActiveAndUnassigned || isNewlyPromoted;
+  }).sort((a, b) => a.queuePosition - b.queuePosition) || [];
   
   // Add debugging for nextUpPlayers
   console.log('Next up players with their types:', nextUpPlayers.map(p => ({
