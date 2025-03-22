@@ -34,12 +34,6 @@ const NewGamePage = () => {
     queryKey: ["/api/checkins"],
     enabled: !!user,
   });
-  
-  // Get active games to calculate correct queue position
-  const { data: activeGames = [] } = useQuery({
-    queryKey: ["/api/games/active"],
-    enabled: !!user,
-  });
 
   const createGameMutation = useMutation({
     mutationFn: async () => {
@@ -247,6 +241,7 @@ const NewGamePage = () => {
 
 
   const playersNeeded = activeGameSet?.playersPerTeam * 2 || 0;
+  const playersPerTeam = activeGameSet?.playersPerTeam || 0;
   const currentQueuePos = activeGameSet?.currentQueuePosition || 0;
 
   // Get players eligible for the next game
@@ -277,20 +272,15 @@ const NewGamePage = () => {
   let homePlayers: any[] = [];
   let awayPlayers: any[] = [];
 
-  // Calculate the correct queue position based on completed games
-  // This ensures we show the right NEXT UP players even if the database value is incorrect
-  const finishedGamesCount = activeGames?.filter(game => game.state === 'final').length || 0;
-  const playersPerGame = activeGameSet?.playersPerTeam || 4;
-
   // First, assign promoted players to their previous teams
   eligiblePlayers.forEach(player => {
     // Check if player should be on away team based on promotion type or previous team
     const isAwayTeam = player.type?.includes('WP') || player.type?.includes('LP') ?
       player.type.endsWith('-A') : player.team === 2;
 
-    if (isAwayTeam && awayPlayers.length < playersPerGame) {
+    if (isAwayTeam && awayPlayers.length < playersPerTeam) {
       awayPlayers.push(player);
-    } else if (!isAwayTeam && homePlayers.length < playersPerGame) {
+    } else if (!isAwayTeam && homePlayers.length < playersPerTeam) {
       homePlayers.push(player);
     }
   });
@@ -299,21 +289,14 @@ const NewGamePage = () => {
   eligiblePlayers.forEach(player => {
     const isAlreadyAssigned = [...homePlayers, ...awayPlayers].some(p => p.userId === player.userId);
     if (!isAlreadyAssigned) {
-      if (homePlayers.length < playersPerGame) {
+      if (homePlayers.length < playersPerTeam) {
         homePlayers.push(player);
-      } else if (awayPlayers.length < playersPerGame) {
+      } else if (awayPlayers.length < playersPerTeam) {
         awayPlayers.push(player);
       }
     }
   });
-  
-  // Calculate what currentQueuePosition should be based on the number of finished games
-  // Formula: (playersPerTeam * 2 * finishedGamesCount) + 1
-  const calculatedQueuePosition = (playersPerGame * 2 * finishedGamesCount) + 1;
-  
-  console.log(`Calculating expected queue position: (${playersPerGame} * 2 * ${finishedGamesCount}) + 1 = ${calculatedQueuePosition}`);
-  console.log(`Database queue position: ${activeGameSet?.currentQueuePosition}`);
-  
+
   // Get next up players (those after the first 'playersNeeded' players)
   // Take the rest of the players after we've selected the first 'playersNeeded' for teams
   // Also include win_promoted and loss_promoted players that might be marked as inactive
@@ -322,10 +305,9 @@ const NewGamePage = () => {
     const isInNextUpRange = p.isActive && p.gameId === null;
     
     // Check for promoted players that might be inactive but should be displayed
-    // Use the calculated queue position instead of the database value
     const isPromotedPlayer = !p.isActive && p.gameId === null && 
       (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
-      p.queuePosition >= calculatedQueuePosition;
+      p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
     
     return isInNextUpRange || isPromotedPlayer;
   })
