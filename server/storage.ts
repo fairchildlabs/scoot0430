@@ -265,15 +265,25 @@ export class DatabaseStorage implements IStorage {
       );
     
     // Calculate what the queue positions should be based on number of completed games
-    // After first game: currentQueuePosition = playersPerTeam * 2 + 1 (9 for 4 players per team) 
+    // After first game: currentQueuePosition = playersPerTeam * 2 + 1 (9 for 4 players per team)
     // After second game: currentQueuePosition = playersPerTeam * 2 * 2 + 1 (17 for 4 players per team)
-    // Formula: playersPerTeam * 2 * completedGamesCount + 1
-    const gamesFinished = ((completedGamesCount?.count || 0) as number); // Current game is already counted in the completedGamesCount
+    // Formula: playersPerTeam * 2 * number_of_games + 1
     
-    // CRITICAL: currentQueuePosition needs to advance after each game
-    // It should always be (playersPerTeam * 2 * gamesFinished) + 1
-    // So after Game 1: 9, after Game 2: 17, after Game 3: 25, etc.
-    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * (gamesFinished + 1)) + 1;
+    // Get count of completed games (including the current game that's finishing)
+    const gamesFinished = Number(completedGamesCount?.count || 0); 
+    
+    // To calculate the next queue position correctly:
+    // For 4 players per team:
+    // - After game 1: 9 (4*2 + 1)
+    // - After game 2: 17 (4*2*2 + 1)
+    // - After game 3: 25 (4*2*3 + 1)
+    const correctQueuePosition = (activeGameSet.playersPerTeam * 2 * (gamesFinished)) + 1;
+    
+    console.log('Queue position calculation:', {
+      playersPerTeam: activeGameSet.playersPerTeam,
+      gamesFinished,
+      formula: `(${activeGameSet.playersPerTeam} * 2 * (${gamesFinished} + 1)) + 1 = ${correctQueuePosition}`
+    });
     const correctNextUpPosition = correctQueuePosition + (activeGameSet.playersPerTeam * 2);
     
     console.log(`Game ${gameId} finished. Total games completed: ${gamesFinished}.`);
@@ -980,6 +990,44 @@ export class DatabaseStorage implements IStorage {
     
     if (!state.activeGameSet) {
       throw new Error("No active game set available");
+    }
+    
+    // Make sure all loss_promoted and win_promoted players are marked isActive=true
+    // This fixes the issue where they don't show up in the NEXT_UP list
+    await db
+      .update(checkins)
+      .set({ isActive: true })
+      .where(
+        and(
+          inArray(checkins.type, ['loss_promoted', 'win_promoted']),
+          eq(checkins.isActive, false),
+          isNull(checkins.gameId),
+          eq(checkins.gameSetId, state.activeGameSet.id)
+        )
+      );
+    
+    // Log the players we just updated
+    const updatedPlayers = await db
+      .select({
+        id: checkins.id,
+        username: users.username,
+        type: checkins.type,
+        queuePosition: checkins.queuePosition
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(
+        and(
+          inArray(checkins.type, ['loss_promoted', 'win_promoted']),
+          eq(checkins.isActive, true),
+          isNull(checkins.gameId),
+          eq(checkins.gameSetId, state.activeGameSet.id)
+        )
+      );
+    
+    if (updatedPlayers.length > 0) {
+      console.log(`Ensured ${updatedPlayers.length} promoted players are active:`, 
+        updatedPlayers.map(p => `${p.username} (${p.type}, pos: ${p.queuePosition})`));
     }
     
     // Find the player's current check-in

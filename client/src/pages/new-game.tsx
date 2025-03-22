@@ -251,7 +251,8 @@ const NewGamePage = () => {
     const isActiveAndUnassigned = p.isActive && p.gameId === null;
     
     // Include promoted players (even if inactive) that should be prioritized in team selection
-    const isPromotedPlayer = !p.isActive && p.gameId === null && 
+    // Note: promoted players might have isActive=false but we still want to include them
+    const isPromotedPlayer = p.gameId === null && 
       (p.type === 'win_promoted' || p.type === 'loss_promoted') &&
       p.queuePosition >= (activeGameSet?.currentQueuePosition || 9);
     
