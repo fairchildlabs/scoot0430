@@ -15,6 +15,7 @@
 
 /* Function prototypes */
 void get_next_up_players(PGconn *conn, int game_set_id, const char *format);
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format);
 
 /* Error handling helper */
 void handle_error(const char *message, PGconn *conn) {
@@ -1308,6 +1309,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
+        printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
