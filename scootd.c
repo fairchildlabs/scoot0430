@@ -2076,8 +2076,9 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             const char *username = PQgetvalue(res, i, 1);
             int relative_position = atoi(PQgetvalue(res, i, 2));
             
-            // Calculate new queue position based on relative position
-            int new_position = current_queue_position + relative_position - 1;
+            // Calculate new queue position sequentially for all players, not just by relative position
+            // This ensures promoted players get positions 9, 10, 11, 12 instead of all getting position 9
+            int new_position = current_queue_position + i;
             
             // Store the team for promoted players so they can play on the same team next time
             char insert_query[512];
