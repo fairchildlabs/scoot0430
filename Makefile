@@ -7,7 +7,7 @@ all: scootd scootd_enhanced
 scootd: scootd.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
-scootd_enhanced: scootd_enhanced.c
+scootd_enhanced: scootd_enhanced_fixed.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:

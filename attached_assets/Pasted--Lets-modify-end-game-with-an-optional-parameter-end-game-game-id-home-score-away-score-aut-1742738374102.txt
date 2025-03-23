@@ -1,0 +1,22 @@
+
+Lets modify end-game with an optional parameter
+end-game <game_id> <home_score> <away_score> [autopromote]   (autopromote: true|false, default: true)
+1.  In the case of autopromote = false, behavior stays the same as it is now.
+2.  Let's change the name and meaning of game_sets.max_consecutive_team_wins to game_sets.max_consecutive_games
+3.  In the case of autopromote - true, we will create rules;
+    1.  We'll need a function called bool team_compare(teamA, teamB)
+         - this function compares two teams to see if they are the same.  For NOW, we want to compare if all the players are the same on both teams.
+         - later, we may extend the rules, for instance, a team might be the same if the 3 of 4 players are the same or some other paramerized logic.
+    2. 
+	a. After a game ends, all the players (winner and losers) are checked out, specifically, their checkins.is_active is set to FALSE.
+	b. Once a game ends, if the winning team has completed less than game_sets.max_consecutive_games, then that team is win_promoted
+        c. Once a game end, if the winning team has completed game_sets.max_consecutive_games, then the losing team is loss_promoted
+        d. The existing players on the next_up list (checkins.queue_postiion >= game_sets.current_queue_position) have their queue_positions incremented by players_per_team
+        e. game_sets.queue_next_up is incremented by players_per_team
+        f. the promoted team players are checked in at game_sets.current_queue_position + completed_game.relative_position - 1 (if current_queue_position = 9, then relative_postion 1 is checked at 9, the next one at 10, etc..)
+        g. The completed games non-promoted players are checked in normally if they have users.autoup = true (they should be checked in at the tail, i.e. queue_next_up, which should increment after each player checking.  autoup is the type for this checkin.
+
+Please summarize my request and restate so that I can review before you implement
+
+         
+
