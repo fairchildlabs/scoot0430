@@ -2052,7 +2052,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         
         // Get players to promote
         sprintf(query, 
-                "SELECT gp.user_id, u.username, gp.relative_position, u.autoup "
+                "SELECT gp.user_id, u.username, u.autoup "
                 "FROM game_players gp "
                 "JOIN users u ON gp.user_id = u.id "
                 "WHERE gp.game_id = %d AND gp.team = %d "
@@ -2074,7 +2074,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         for (int i = 0; i < player_count; i++) {
             int user_id = atoi(PQgetvalue(res, i, 0));
             const char *username = PQgetvalue(res, i, 1);
-            int relative_position = atoi(PQgetvalue(res, i, 2));
+            // We don't need relative_position anymore since we're using sequential numbers
             
             // Calculate new queue position sequentially for all players, not just by relative position
             // This ensures promoted players get positions 9, 10, 11, 12 instead of all getting position 9
