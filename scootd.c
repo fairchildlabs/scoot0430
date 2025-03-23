@@ -61,45 +61,46 @@ typedef struct {
     int id;
     char *username;
     char *password;        /* Hashed in database */
-    char *firstName;
-    char *lastName;
+    char *first_name;      /* Using exact database column names */
+    char *last_name;
     char *email;
     char *phone;
-    int birthYear;
-    int birthMonth;
-    int birthDay;
-    int isPlayer;
-    int isBank;
-    int isBook;
-    int isEngineer;
-    int isRoot;
+    int birth_year;
+    int birth_month;
+    int birth_day;
+    int is_player;
+    int is_bank;
+    int is_book;
+    int is_engineer;
+    int is_root;
     int autoup;
 } User;
 
 /* Game Set structure */
 typedef struct {
     int id;
-    int userId;
-    char *name;
-    char *date;
-    char *startTime;
-    char *endTime;
-    int isActive;
-    int clubIndex;
-    int queueNextUp;
-    int currentQueuePosition;
-    int playersPerTeam;
+    int user_id;
+    char *gym;
+    char *created_at;
+    char *start_time;
+    char *end_time;
+    int is_active;
+    int club_index;
+    int queue_next_up;
+    int current_queue_position;
+    int players_per_team;
+    char *point_system;
 } GameSet;
 
 /* Game structure */
 typedef struct {
     int id;
-    int setId;
-    char *startTime;
-    char *endTime;
-    int team1Score;
-    int team2Score;
-    int clubIndex;
+    int set_id;
+    char *start_time;
+    char *end_time;
+    int team1_score;
+    int team2_score;
+    int club_index;
     char *court;
     char *state;
 } Game;
@@ -107,14 +108,14 @@ typedef struct {
 /* Check-in structure */
 typedef struct {
     int id;
-    int userId;
-    char *checkInTime;
-    char *checkInDate;
-    int isActive;
-    int gameSetId;
-    int clubIndex;
-    int queuePosition;
-    int gameId;
+    int user_id;
+    char *check_in_time;
+    char *check_in_date;
+    int is_active;
+    int club_index;
+    int game_set_id;
+    int queue_position;
+    int game_id;
     char *type;
     int team;
 } Checkin;
@@ -122,8 +123,8 @@ typedef struct {
 /* Game Player structure */
 typedef struct {
     int id;
-    int gameId;
-    int userId;
+    int game_id;
+    int user_id;
     int team;
 } GamePlayer;
 
@@ -134,8 +135,8 @@ void free_user(User *user) {
     if (!user) return;
     free(user->username);
     free(user->password);
-    free(user->firstName);
-    free(user->lastName);
+    free(user->first_name);
+    free(user->last_name);
     free(user->email);
     free(user->phone);
     free(user);
@@ -144,18 +145,17 @@ void free_user(User *user) {
 /* Free memory for GameSet structure */
 void free_game_set(GameSet *gameSet) {
     if (!gameSet) return;
-    free(gameSet->name);
-    free(gameSet->date);
-    free(gameSet->startTime);
-    free(gameSet->endTime);
+    free(gameSet->created_at);
+    free(gameSet->gym);
+    free(gameSet->point_system);
     free(gameSet);
 }
 
 /* Free memory for Game structure */
 void free_game(Game *game) {
     if (!game) return;
-    free(game->startTime);
-    free(game->endTime);
+    free(game->start_time);
+    free(game->end_time);
     free(game->court);
     free(game->state);
     free(game);
@@ -164,8 +164,8 @@ void free_game(Game *game) {
 /* Free memory for Checkin structure */
 void free_checkin(Checkin *checkin) {
     if (!checkin) return;
-    free(checkin->checkInTime);
-    free(checkin->checkInDate);
+    free(checkin->check_in_time);
+    free(checkin->check_in_date);
     free(checkin->type);
     free(checkin);
 }
@@ -269,30 +269,30 @@ User **get_users(PGconn *conn, int *count) {
         users[i]->id = atoi(PQgetvalue(result, i, 0));
         users[i]->username = strdup(PQgetvalue(result, i, 1));
         users[i]->password = strdup(PQgetvalue(result, i, 2));
-        users[i]->firstName = strdup(PQgetvalue(result, i, 3));
-        users[i]->lastName = strdup(PQgetvalue(result, i, 4));
+        users[i]->first_name = strdup(PQgetvalue(result, i, 3));
+        users[i]->last_name = strdup(PQgetvalue(result, i, 4));
         users[i]->email = strdup(PQgetvalue(result, i, 5));
         users[i]->phone = strdup(PQgetvalue(result, i, 6));
-        users[i]->birthYear = atoi(PQgetvalue(result, i, 7));
+        users[i]->birth_year = atoi(PQgetvalue(result, i, 7));
         
         /* Handle nullable columns properly */
         if (PQgetisnull(result, i, 8)) {
-            users[i]->birthMonth = 0;
+            users[i]->birth_month = 0;
         } else {
-            users[i]->birthMonth = atoi(PQgetvalue(result, i, 8));
+            users[i]->birth_month = atoi(PQgetvalue(result, i, 8));
         }
         
         if (PQgetisnull(result, i, 9)) {
-            users[i]->birthDay = 0;
+            users[i]->birth_day = 0;
         } else {
-            users[i]->birthDay = atoi(PQgetvalue(result, i, 9));
+            users[i]->birth_day = atoi(PQgetvalue(result, i, 9));
         }
         
-        users[i]->isPlayer = atoi(PQgetvalue(result, i, 10));
-        users[i]->isBank = atoi(PQgetvalue(result, i, 11));
-        users[i]->isBook = atoi(PQgetvalue(result, i, 12));
-        users[i]->isEngineer = atoi(PQgetvalue(result, i, 13));
-        users[i]->isRoot = atoi(PQgetvalue(result, i, 14));
+        users[i]->is_player = atoi(PQgetvalue(result, i, 10));
+        users[i]->is_bank = atoi(PQgetvalue(result, i, 11));
+        users[i]->is_book = atoi(PQgetvalue(result, i, 12));
+        users[i]->is_engineer = atoi(PQgetvalue(result, i, 13));
+        users[i]->is_root = atoi(PQgetvalue(result, i, 14));
         users[i]->autoup = atoi(PQgetvalue(result, i, 15));
     }
     
@@ -305,9 +305,9 @@ Checkin **get_active_checkins_with_username(PGconn *conn, int *count) {
     const char *query = 
         "SELECT c.*, u.username "
         "FROM checkins c "
-        "JOIN users u ON c.\"userId\" = u.id "
-        "WHERE c.\"isActive\" = true "
-        "ORDER BY c.\"queuePosition\" ASC";
+        "JOIN users u ON c.\"user_id\" = u.id "
+        "WHERE c.\"is_active\" = true "
+        "ORDER BY c.\"queue_position\" ASC";
     
     PGresult *result = exec_query(conn, query);
     
@@ -343,19 +343,19 @@ Checkin **get_active_checkins_with_username(PGconn *conn, int *count) {
         }
         
         checkins[i]->id = atoi(PQgetvalue(result, i, 0));
-        checkins[i]->userId = atoi(PQgetvalue(result, i, 1));
-        checkins[i]->checkInTime = strdup(PQgetvalue(result, i, 2));
-        checkins[i]->checkInDate = strdup(PQgetvalue(result, i, 3));
-        checkins[i]->isActive = atoi(PQgetvalue(result, i, 4));
-        checkins[i]->gameSetId = atoi(PQgetvalue(result, i, 5));
-        checkins[i]->clubIndex = atoi(PQgetvalue(result, i, 6));
-        checkins[i]->queuePosition = atoi(PQgetvalue(result, i, 7));
+        checkins[i]->user_id = atoi(PQgetvalue(result, i, 1));
+        checkins[i]->check_in_time = strdup(PQgetvalue(result, i, 2));
+        checkins[i]->check_in_date = strdup(PQgetvalue(result, i, 3));
+        checkins[i]->is_active = atoi(PQgetvalue(result, i, 4));
+        checkins[i]->game_set_id = atoi(PQgetvalue(result, i, 5));
+        checkins[i]->club_index = atoi(PQgetvalue(result, i, 6));
+        checkins[i]->queue_position = atoi(PQgetvalue(result, i, 7));
         
         /* Handle nullable columns properly */
         if (PQgetisnull(result, i, 8)) {
-            checkins[i]->gameId = 0;
+            checkins[i]->game_id = 0;
         } else {
-            checkins[i]->gameId = atoi(PQgetvalue(result, i, 8));
+            checkins[i]->game_id = atoi(PQgetvalue(result, i, 8));
         }
         
         checkins[i]->type = strdup(PQgetvalue(result, i, 9));
@@ -369,7 +369,7 @@ Checkin **get_active_checkins_with_username(PGconn *conn, int *count) {
         /* Username is added at column 11 in the query */
         printf("User %s at position %d (team: %d, type: %s)\n",
                PQgetvalue(result, i, 11),
-               checkins[i]->queuePosition,
+               checkins[i]->queue_position,
                checkins[i]->team,
                checkins[i]->type);
     }
@@ -419,19 +419,19 @@ Game **get_active_games(PGconn *conn, int *count) {
         }
         
         games[i]->id = atoi(PQgetvalue(result, i, 0));
-        games[i]->setId = atoi(PQgetvalue(result, i, 1));
-        games[i]->startTime = strdup(PQgetvalue(result, i, 2));
+        games[i]->set_id = atoi(PQgetvalue(result, i, 1));
+        games[i]->start_time = strdup(PQgetvalue(result, i, 2));
         
         /* Handle nullable columns properly */
         if (PQgetisnull(result, i, 3)) {
-            games[i]->endTime = strdup("");
+            games[i]->end_time = strdup("");
         } else {
-            games[i]->endTime = strdup(PQgetvalue(result, i, 3));
+            games[i]->end_time = strdup(PQgetvalue(result, i, 3));
         }
         
-        games[i]->team1Score = atoi(PQgetvalue(result, i, 4));
-        games[i]->team2Score = atoi(PQgetvalue(result, i, 5));
-        games[i]->clubIndex = atoi(PQgetvalue(result, i, 6));
+        games[i]->team1_score = atoi(PQgetvalue(result, i, 4));
+        games[i]->team2_score = atoi(PQgetvalue(result, i, 5));
+        games[i]->club_index = atoi(PQgetvalue(result, i, 6));
         games[i]->court = strdup(PQgetvalue(result, i, 7));
         games[i]->state = strdup(PQgetvalue(result, i, 8));
         
@@ -439,8 +439,8 @@ Game **get_active_games(PGconn *conn, int *count) {
                games[i]->id,
                games[i]->court,
                games[i]->state,
-               games[i]->team1Score,
-               games[i]->team2Score);
+               games[i]->team1_score,
+               games[i]->team2_score);
     }
     
     PQclear(result);
@@ -449,7 +449,7 @@ Game **get_active_games(PGconn *conn, int *count) {
 
 /* Get active game set details */
 GameSet *get_active_game_set(PGconn *conn) {
-    const char *query = "SELECT * FROM game_sets WHERE \"isActive\" = true LIMIT 1";
+    const char *query = "SELECT * FROM game_sets WHERE \"is_active\" = true LIMIT 1";
     PGresult *result = exec_query(conn, query);
     
     if (!result) {
@@ -469,34 +469,34 @@ GameSet *get_active_game_set(PGconn *conn) {
     }
     
     gameSet->id = atoi(PQgetvalue(result, 0, 0));
-    gameSet->userId = atoi(PQgetvalue(result, 0, 1));
-    gameSet->name = strdup(PQgetvalue(result, 0, 2));
-    gameSet->date = strdup(PQgetvalue(result, 0, 3));
+    gameSet->user_id = atoi(PQgetvalue(result, 0, 1));
+    gameSet->gym = strdup(PQgetvalue(result, 0, 2));
+    gameSet->created_at = strdup(PQgetvalue(result, 0, 3));
     
     /* Handle nullable columns properly */
     if (PQgetisnull(result, 0, 4)) {
-        gameSet->startTime = strdup("");
+        gameSet->start_time = strdup("");
     } else {
-        gameSet->startTime = strdup(PQgetvalue(result, 0, 4));
+        gameSet->start_time = strdup(PQgetvalue(result, 0, 4));
     }
     
     if (PQgetisnull(result, 0, 5)) {
-        gameSet->endTime = strdup("");
+        gameSet->end_time = strdup("");
     } else {
-        gameSet->endTime = strdup(PQgetvalue(result, 0, 5));
+        gameSet->end_time = strdup(PQgetvalue(result, 0, 5));
     }
     
-    gameSet->isActive = atoi(PQgetvalue(result, 0, 6));
-    gameSet->clubIndex = atoi(PQgetvalue(result, 0, 7));
-    gameSet->queueNextUp = atoi(PQgetvalue(result, 0, 8));
-    gameSet->currentQueuePosition = atoi(PQgetvalue(result, 0, 9));
-    gameSet->playersPerTeam = atoi(PQgetvalue(result, 0, 10));
+    gameSet->is_active = atoi(PQgetvalue(result, 0, 6));
+    gameSet->club_index = atoi(PQgetvalue(result, 0, 7));
+    gameSet->queue_next_up = atoi(PQgetvalue(result, 0, 8));
+    gameSet->current_queue_position = atoi(PQgetvalue(result, 0, 9));
+    gameSet->players_per_team = atoi(PQgetvalue(result, 0, 10));
     
-    printf("Active GameSet: %s (ID: %d)\n", gameSet->name, gameSet->id);
+    printf("Active GameSet: %s (ID: %d)\n", gameSet->gym, gameSet->id);
     printf("Queue Position: %d, Next Up: %d, Players Per Team: %d\n",
-           gameSet->currentQueuePosition,
-           gameSet->queueNextUp,
-           gameSet->playersPerTeam);
+           gameSet->current_queue_position,
+           gameSet->queue_next_up,
+           gameSet->players_per_team);
     
     PQclear(result);
     return gameSet;
@@ -546,11 +546,11 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         
         printf("Found %d users\n", count);
         for (int i = 0; i < count; i++) {
-            printf("User #%d: %s (isPlayer: %d, isEngineer: %d, autoup: %d)\n",
+            printf("User #%d: %s (is_player: %d, is_engineer: %d, autoup: %d)\n",
                    users[i]->id,
                    users[i]->username,
-                   users[i]->isPlayer,
-                   users[i]->isEngineer,
+                   users[i]->is_player,
+                   users[i]->is_engineer,
                    users[i]->autoup);
             
             /* Free memory for user */
