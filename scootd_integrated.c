@@ -1309,7 +1309,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get active games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.created_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'active' "
                 "ORDER BY g.id",
@@ -1332,7 +1332,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             printf("      \"court\": \"%s\",\n", PQgetvalue(res, i, 1));
             printf("      \"team1_score\": %d,\n", atoi(PQgetvalue(res, i, 2)));
             printf("      \"team2_score\": %d,\n", atoi(PQgetvalue(res, i, 3)));
-            printf("      \"created_at\": \"%s\",\n", PQgetvalue(res, i, 4));
+            printf("      \"start_time\": \"%s\",\n", PQgetvalue(res, i, 4));
             
             // Get players for this game
             char player_query[512];
@@ -1455,7 +1455,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             printf("      \"court\": \"%s\",\n", PQgetvalue(res, i, 1));
             printf("      \"team1_score\": %d,\n", atoi(PQgetvalue(res, i, 2)));
             printf("      \"team2_score\": %d,\n", atoi(PQgetvalue(res, i, 3)));
-            printf("      \"created_at\": \"%s\",\n", PQgetvalue(res, i, 4));
+            printf("      \"start_time\": \"%s\",\n", PQgetvalue(res, i, 4));
             printf("      \"completed_at\": \"%s\"\n", PQgetvalue(res, i, 5));
             printf("    }%s\n", i < completed_count - 1 ? "," : "");
         }
