@@ -374,11 +374,11 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
             
             PGresult *recent_res = PQexecParams(conn, 
                 "SELECT g.id, g.court, g.team1_score, g.team2_score, g.state, gp.team, "
-                "g.created_at, g.updated_at "
+                "g.start_time, g.updated_at "
                 "FROM games g "
                 "JOIN game_players gp ON g.id = gp.game_id "
                 "WHERE gp.user_id = $1 "
-                "ORDER BY g.created_at DESC "
+                "ORDER BY g.start_time DESC "
                 "LIMIT 5", 
                 1, NULL, recent_params, NULL, NULL, 0);
             
@@ -1431,7 +1431,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get recent completed games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.created_at, g.updated_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.updated_at "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'completed' "
                 "ORDER BY g.updated_at DESC "
@@ -1472,7 +1472,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get active games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.created_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'active' "
                 "ORDER BY g.id",
@@ -1615,7 +1615,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get recent completed games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.created_at, g.updated_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.updated_at "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'completed' "
                 "ORDER BY g.updated_at DESC "
