@@ -361,7 +361,7 @@ const NewGamePage = () => {
             'bg-white text-black'
       }`}>
         <div className="flex items-center gap-4">
-          <span className="font-mono text-lg">#{player.queuePosition}</span>
+          <span className="font-mono text-lg">#{isAway ? player.queuePosition - 4 : player.queuePosition}</span>
           <span>
             {player.username}
             {promotionBadge && (
