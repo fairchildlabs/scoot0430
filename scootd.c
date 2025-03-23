@@ -527,6 +527,58 @@ void run_sql(PGconn *conn, const char *sql) {
     PQclear(result);
 }
 
+/* Handle player checkout */
+int checkout_player(PGconn *conn, int queue_position) {
+    const char *query = 
+        "UPDATE checkins SET is_active = false "
+        "WHERE queue_position = $1 AND is_active = true "
+        "RETURNING id, user_id, game_id, team, queue_position, "
+        "(SELECT username FROM users WHERE id = user_id)";
+    
+    const char *paramValues[1];
+    char pos_str[16];
+    sprintf(pos_str, "%d", queue_position);
+    paramValues[0] = pos_str;
+    
+    PGresult *result = PQexecParams(conn, query, 1, NULL, paramValues, NULL, NULL, 0);
+    
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Checkout failed: %s\n", PQerrorMessage(conn));
+        PQclear(result);
+        return 0;
+    }
+    
+    int rows = PQntuples(result);
+    if (rows == 0) {
+        printf("No active player found at position %d\n", queue_position);
+        PQclear(result);
+        return 0;
+    }
+    
+    int checkin_id = atoi(PQgetvalue(result, 0, 0));
+    int user_id = atoi(PQgetvalue(result, 0, 1));
+    int game_id = 0;
+    if (!PQgetisnull(result, 0, 2)) {
+        game_id = atoi(PQgetvalue(result, 0, 2));
+    }
+    int team = 0;
+    if (!PQgetisnull(result, 0, 3)) {
+        team = atoi(PQgetvalue(result, 0, 3));
+    }
+    int pos = atoi(PQgetvalue(result, 0, 4));
+    const char *username = PQgetvalue(result, 0, 5);
+    
+    printf("Checked out player %s (user ID: %d) from position %d\n", 
+           username, user_id, pos);
+    
+    if (game_id > 0) {
+        printf("Player was in active game #%d on team %d\n", game_id, team);
+    }
+    
+    PQclear(result);
+    return checkin_id;
+}
+
 /* Simple command line option parser */
 void process_command(PGconn *conn, int argc, char *argv[]) {
     if (argc < 2) {
@@ -536,6 +588,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  active-checkins - List active checkins with usernames\n");
         printf("  active-games - List active games\n");
         printf("  active-game-set - Show active game set details\n");
+        printf("  checkout <position> - Check out player at queue position\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -589,6 +642,20 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         } else {
             printf("No active game set found\n");
         }
+    }
+    else if (strcmp(argv[1], "checkout") == 0) {
+        if (argc < 3) {
+            printf("Usage: %s checkout <position>\n", argv[0]);
+            return;
+        }
+        
+        int position = atoi(argv[2]);
+        if (position <= 0) {
+            printf("Invalid position. Must be a positive number.\n");
+            return;
+        }
+        
+        checkout_player(conn, position);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
