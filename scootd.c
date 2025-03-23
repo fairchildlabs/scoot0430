@@ -1653,7 +1653,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         printf("\n");
         PQclear(res);
         
-        // Get recent completed games
+        // Get completed games
         sprintf(query, 
                 "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.end_time "
                 "FROM games g "
@@ -1670,21 +1670,114 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         }
         
         int completed_count = PQntuples(res);
-        printf("==== Recently Completed Games (%d) ====\n", completed_count);
+        printf("==== Completed Games (%d) ====\n", completed_count);
         
         if (completed_count > 0) {
-            printf("%-4s | %-8s | %-10s | %-15s\n", "ID", "Court", "Score", "Completed At");
-            printf("-------------------------------------------\n");
-            
             for (int i = 0; i < completed_count; i++) {
                 int game_id = atoi(PQgetvalue(res, i, 0));
                 const char *court = PQgetvalue(res, i, 1);
                 int team1_score = atoi(PQgetvalue(res, i, 2));
                 int team2_score = atoi(PQgetvalue(res, i, 3));
-                const char *completed_at = PQgetvalue(res, i, 5);
+                const char *start_time = PQgetvalue(res, i, 4);
+                const char *end_time = PQgetvalue(res, i, 5);
                 
-                printf("%-4d | %-8s | %-3d-%-6d | %-15s\n", 
-                       game_id, court, team1_score, team2_score, completed_at);
+                // Calculate duration if both timestamps are valid
+                char duration[64] = "Unknown";
+                if (start_time[0] != '\0' && end_time[0] != '\0') {
+                    struct tm tm_start = {0}, tm_end = {0};
+                    time_t t_start, t_end;
+                    
+                    // Parse timestamps
+                    if (strptime(start_time, "%Y-%m-%d %H:%M:%S", &tm_start) != NULL &&
+                        strptime(end_time, "%Y-%m-%d %H:%M:%S", &tm_end) != NULL) {
+                        t_start = mktime(&tm_start);
+                        t_end = mktime(&tm_end);
+                        int diff_seconds = (int)difftime(t_end, t_start);
+                        
+                        sprintf(duration, "%d:%02d", diff_seconds / 60, diff_seconds % 60);
+                    }
+                }
+                
+                printf("\nGame #%d on Court %s (Score: %d-%d, Duration: %s)\n", 
+                       game_id, court, team1_score, team2_score, duration);
+                
+                // Get players for this game
+                char player_query[512];
+                sprintf(player_query, 
+                        "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position, c.type "
+                        "FROM game_players gp "
+                        "JOIN users u ON gp.user_id = u.id "
+                        "LEFT JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
+                        "WHERE gp.game_id = %d "
+                        "ORDER BY gp.team, c.queue_position",
+                        game_id);
+                
+                PGresult *player_res = PQexec(conn, player_query);
+                if (PQresultStatus(player_res) == PGRES_TUPLES_OK) {
+                    // Print HOME team
+                    printf("\nHOME TEAM:\n");
+                    printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
+                    printf("--------------------------------------------------\n");
+                    
+                    // Print Team 1 (HOME)
+                    int found = 0;
+                    for (int j = 0; j < PQntuples(player_res); j++) {
+                        int team = atoi(PQgetvalue(player_res, j, 0));
+                        if (team != 1) continue;
+                        
+                        found = 1;
+                        int user_id = atoi(PQgetvalue(player_res, j, 1));
+                        const char *username = PQgetvalue(player_res, j, 2);
+                        const char *birth_year_str = PQgetvalue(player_res, j, 3);
+                        const char *queue_pos_str = PQgetvalue(player_res, j, 4);
+                        const char *checkin_type = PQgetvalue(player_res, j, 5);
+                        
+                        int queue_pos = queue_pos_str[0] != '\0' ? atoi(queue_pos_str) : 0;
+                        int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+                        bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
+                        
+                        printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+                               queue_pos, username, user_id, 
+                               is_og ? "Yes" : "No", 
+                               checkin_type != NULL && checkin_type[0] != '\0' ? checkin_type : "HOME");
+                    }
+                    
+                    if (!found) {
+                        printf("No HOME team players found\n");
+                    }
+                    
+                    // Print AWAY team
+                    printf("\nAWAY TEAM:\n");
+                    printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
+                    printf("--------------------------------------------------\n");
+                    
+                    found = 0;
+                    for (int j = 0; j < PQntuples(player_res); j++) {
+                        int team = atoi(PQgetvalue(player_res, j, 0));
+                        if (team != 2) continue;
+                        
+                        found = 1;
+                        int user_id = atoi(PQgetvalue(player_res, j, 1));
+                        const char *username = PQgetvalue(player_res, j, 2);
+                        const char *birth_year_str = PQgetvalue(player_res, j, 3);
+                        const char *queue_pos_str = PQgetvalue(player_res, j, 4);
+                        const char *checkin_type = PQgetvalue(player_res, j, 5);
+                        
+                        int queue_pos = queue_pos_str[0] != '\0' ? atoi(queue_pos_str) : 0;
+                        int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+                        bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
+                        
+                        printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+                               queue_pos, username, user_id, 
+                               is_og ? "Yes" : "No", 
+                               checkin_type != NULL && checkin_type[0] != '\0' ? checkin_type : "AWAY");
+                    }
+                    
+                    if (!found) {
+                        printf("No AWAY team players found\n");
+                    }
+                }
+                PQclear(player_res);
             }
         } else {
             printf("No completed games\n");
