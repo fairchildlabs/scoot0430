@@ -263,12 +263,11 @@ const NewGamePage = () => {
   let homePlayers: any[] = [];
   let awayPlayers: any[] = [];
   
-  // Calculate base positions for current game
-  // For display purposes in the new game screen, always show positions 1-4 and 5-8
-  // regardless of the actual queue positions in the database
-  const gameNumber = 1; // Always show game 1 positions on creation screen
-  const homeStartPos = 1; // Always start at 1 for home
-  const awayStartPos = 5; // Always start at 5 for away
+  // For the Game Creation screen, use the actual database queue positions
+  // This will show the real queue positions that the players have in the database
+  const gameNumber = Math.floor((currentQueuePos - 1) / (playersPerTeam * 2)) + 1;
+  const homeStartPos = currentQueuePos; // Use the actual currentQueuePosition from database
+  const awayStartPos = currentQueuePos; // Both teams use actual queue positions from database
   
   console.log('Position calculation:', {
     gameNumber,
