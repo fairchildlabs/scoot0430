@@ -1205,7 +1205,7 @@ int finalize_game(PGconn *conn, int game_id, int home_score, int away_score, boo
         
         /* Check if the winning team has played consecutive games */
         int consecutive_wins = 1; // Current game counts as 1
-        int prev_game_id = 0;
+        // int prev_game_id = 0;  // Commented out unused variable
         
         for (int i = 0; i < PQntuples(prev_games_result); i++) {
             int prev_id = atoi(PQgetvalue(prev_games_result, i, 0));
@@ -1213,7 +1213,7 @@ int finalize_game(PGconn *conn, int game_id, int home_score, int away_score, boo
             /* Use team_compare to check if it's the same team */
             if (team_compare(conn, game_id, prev_id, winning_team, winning_team)) {
                 consecutive_wins++;
-                prev_game_id = prev_id;
+                // prev_game_id = prev_id;  // Commented out unused assignment
                 
                 if (consecutive_wins >= max_consecutive_games) {
                     break;
@@ -1341,7 +1341,7 @@ int finalize_game(PGconn *conn, int game_id, int home_score, int away_score, boo
         
         for (int i = 0; i < PQntuples(players_result); i++) {
             int user_id = atoi(PQgetvalue(players_result, i, 0));
-            int user_team = atoi(PQgetvalue(players_result, i, 1));
+            // int user_team = atoi(PQgetvalue(players_result, i, 1));  // Commented out unused variable
             const char *username = PQgetvalue(players_result, i, 2);
             int relative_pos = atoi(PQgetvalue(players_result, i, 4));
             
