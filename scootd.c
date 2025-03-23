@@ -2041,6 +2041,35 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         
         finalize_game(conn, game_id, home_score, away_score);
     }
+    /* Backwards compatibility for the old "finalize" command */
+    else if (strcmp(argv[1], "finalize") == 0) {
+        if (argc < 5) {
+            printf("Usage: %s finalize <game_id> <home_score> <away_score>\n", argv[0]);
+            printf("Note: 'finalize' command is deprecated. Please use 'end-game' instead.\n");
+            return;
+        }
+        
+        int game_id = atoi(argv[2]);
+        if (game_id <= 0) {
+            printf("Invalid game ID: %s\n", argv[2]);
+            return;
+        }
+        
+        int home_score = atoi(argv[3]);
+        if (home_score < 0) {
+            printf("Invalid home score: %s (must be non-negative)\n", argv[3]);
+            return;
+        }
+        
+        int away_score = atoi(argv[4]);
+        if (away_score < 0) {
+            printf("Invalid away score: %s (must be non-negative)\n", argv[4]);
+            return;
+        }
+        
+        printf("Note: 'finalize' command is deprecated. Please use 'end-game' instead.\n");
+        finalize_game(conn, game_id, home_score, away_score);
+    }
     else if (strcmp(argv[1], "next-up") == 0) {
         int game_set_id = 0;
         const char *format = "text";
