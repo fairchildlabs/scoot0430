@@ -185,7 +185,7 @@ void list_active_games(PGconn *conn) {
  */
 void show_active_game_set(PGconn *conn) {
     const char *query = 
-        "SELECT id, created_by_id, club_index, court_count, max_consecutive_games, "
+        "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
         "current_queue_position, queue_next_up, created_at "
         "FROM game_sets "
         "WHERE is_active = true";
@@ -208,8 +208,8 @@ void show_active_game_set(PGconn *conn) {
     printf("=== Active Game Set ===\n");
     printf("ID: %s\n", PQgetvalue(res, 0, 0));
     printf("Created by: %s\n", PQgetvalue(res, 0, 1));
-    printf("Club index: %s\n", PQgetvalue(res, 0, 2));
-    printf("Court count: %s\n", PQgetvalue(res, 0, 3));
+    printf("Gym: %s\n", PQgetvalue(res, 0, 2));
+    printf("Number of courts: %s\n", PQgetvalue(res, 0, 3));
     printf("Max consecutive games: %s\n", PQgetvalue(res, 0, 4));
     printf("Current queue position: %s\n", PQgetvalue(res, 0, 5));
     printf("Queue next up: %s\n", PQgetvalue(res, 0, 6));
