@@ -948,7 +948,84 @@ void get_player_info(PGconn *conn, const char *username, const char *format) {
 }
 
 /* Finalize a game with scores */
-int finalize_game(PGconn *conn, int game_id, int home_score, int away_score) {
+/* Team comparison function - checks if two teams have the same players */
+bool team_compare(PGconn *conn, int team1_game_id, int team2_game_id, int team1_team_number, int team2_team_number) {
+    /* Get players from team 1 */
+    const char *team1_query = 
+        "SELECT gp.user_id "
+        "FROM game_players gp "
+        "WHERE gp.game_id = $1 AND gp.team = $2 "
+        "ORDER BY gp.user_id";
+    
+    char team1_game_id_str[16];
+    sprintf(team1_game_id_str, "%d", team1_game_id);
+    
+    char team1_team_str[2];
+    sprintf(team1_team_str, "%d", team1_team_number);
+    
+    const char *team1_params[2] = { team1_game_id_str, team1_team_str };
+    
+    PGresult *team1_result = PQexecParams(conn, team1_query, 2, NULL, team1_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(team1_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Team 1 query failed: %s\n", PQerrorMessage(conn));
+        PQclear(team1_result);
+        return false;
+    }
+    
+    /* Get players from team 2 */
+    const char *team2_query = 
+        "SELECT gp.user_id "
+        "FROM game_players gp "
+        "WHERE gp.game_id = $1 AND gp.team = $2 "
+        "ORDER BY gp.user_id";
+    
+    char team2_game_id_str[16];
+    sprintf(team2_game_id_str, "%d", team2_game_id);
+    
+    char team2_team_str[2];
+    sprintf(team2_team_str, "%d", team2_team_number);
+    
+    const char *team2_params[2] = { team2_game_id_str, team2_team_str };
+    
+    PGresult *team2_result = PQexecParams(conn, team2_query, 2, NULL, team2_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(team2_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Team 2 query failed: %s\n", PQerrorMessage(conn));
+        PQclear(team1_result);
+        PQclear(team2_result);
+        return false;
+    }
+    
+    /* Compare team sizes */
+    int team1_rows = PQntuples(team1_result);
+    int team2_rows = PQntuples(team2_result);
+    
+    if (team1_rows != team2_rows) {
+        PQclear(team1_result);
+        PQclear(team2_result);
+        return false;
+    }
+    
+    /* Compare player IDs */
+    for (int i = 0; i < team1_rows; i++) {
+        int player1_id = atoi(PQgetvalue(team1_result, i, 0));
+        int player2_id = atoi(PQgetvalue(team2_result, i, 0));
+        
+        if (player1_id != player2_id) {
+            PQclear(team1_result);
+            PQclear(team2_result);
+            return false;
+        }
+    }
+    
+    /* If we reach here, teams are identical */
+    PQclear(team1_result);
+    PQclear(team2_result);
+    return true;
+}
+
+int finalize_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote) {
     /* First check if the game exists and is in 'started' state */
     const char *game_query = 
         "SELECT id, state FROM games WHERE id = $1";
@@ -1019,10 +1096,429 @@ int finalize_game(PGconn *conn, int game_id, int home_score, int away_score) {
            (home_score == away_score) ? "Tie game" : 
            (home_score > away_score) ? "Home team wins" : "Away team wins");
     
-    printf("\nNext Steps:\n");
-    printf("1. Use 'promote %d win' to move winning team to Next Up queue\n", game_id);
-    printf("2. Use 'promote %d loss' to move losing team to Next Up queue\n", game_id);
-    printf("3. Use 'checkout' to remove players who don't want to continue\n");
+    /* If autopromote is true, handle automatic promotion */
+    if (autopromote && home_score != away_score) {
+        /* Get the set_id of this game */
+        const char *set_query = "SELECT set_id FROM games WHERE id = $1";
+        PGresult *set_result = PQexecParams(conn, set_query, 1, NULL, game_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(set_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Set ID query failed: %s\n", PQerrorMessage(conn));
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            return updated_id;
+        }
+        
+        int set_id = atoi(PQgetvalue(set_result, 0, 0));
+        
+        /* Get the max_consecutive_games and players_per_team from game_sets */
+        const char *set_config_query = 
+            "SELECT max_consecutive_games, players_per_team, current_queue_position, queue_next_up "
+            "FROM game_sets WHERE id = $1";
+        
+        char set_id_str[16];
+        sprintf(set_id_str, "%d", set_id);
+        const char *set_config_params[1] = { set_id_str };
+        
+        PGresult *set_config_result = PQexecParams(conn, set_config_query, 1, NULL, set_config_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(set_config_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Set config query failed: %s\n", PQerrorMessage(conn));
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            return updated_id;
+        }
+        
+        int max_consecutive_games = atoi(PQgetvalue(set_config_result, 0, 0));
+        int players_per_team = atoi(PQgetvalue(set_config_result, 0, 1));
+        int current_queue_position = atoi(PQgetvalue(set_config_result, 0, 2));
+        int queue_next_up = atoi(PQgetvalue(set_config_result, 0, 3));
+        
+        /* Determine winning team */
+        int winning_team = (home_score > away_score) ? 1 : 2;
+        
+        /* Start a transaction */
+        PGresult *begin_result = PQexec(conn, "BEGIN");
+        if (PQresultStatus(begin_result) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "BEGIN command failed: %s\n", PQerrorMessage(conn));
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(begin_result);
+            return updated_id;
+        }
+        PQclear(begin_result);
+        
+        /* a. Deactivate all players from finished game */
+        const char *deactivate_query = 
+            "UPDATE checkins SET is_active = false "
+            "WHERE game_id = $1 AND is_active = true "
+            "RETURNING id";
+        
+        PGresult *deactivate_result = PQexecParams(conn, deactivate_query, 1, NULL, game_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(deactivate_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Failed to deactivate players: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(deactivate_result);
+            return updated_id;
+        }
+        
+        int deactivated_count = PQntuples(deactivate_result);
+        printf("Deactivated %d players from game #%d\n", deactivated_count, game_id);
+        PQclear(deactivate_result);
+        
+        /* b-c. Determine which team to promote based on consecutive games */
+        /* First, get the previous games where the winning team played */
+        const char *prev_games_query = 
+            "SELECT g.id, g.team1_score, g.team2_score "
+            "FROM games g "
+            "JOIN game_players gp1 ON g.id = gp1.game_id AND gp1.team = $1 "
+            "WHERE g.set_id = $2 AND g.state = 'final' AND g.id != $3 "
+            "ORDER BY g.id DESC";
+        
+        char winning_team_str[2];
+        sprintf(winning_team_str, "%d", winning_team);
+        
+        const char *prev_games_params[3] = { winning_team_str, set_id_str, game_id_str };
+        
+        PGresult *prev_games_result = PQexecParams(conn, prev_games_query, 3, NULL, prev_games_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(prev_games_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Previous games query failed: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(prev_games_result);
+            return updated_id;
+        }
+        
+        /* Check if the winning team has played consecutive games */
+        int consecutive_wins = 1; // Current game counts as 1
+        int prev_game_id = 0;
+        
+        for (int i = 0; i < PQntuples(prev_games_result); i++) {
+            int prev_id = atoi(PQgetvalue(prev_games_result, i, 0));
+            
+            /* Use team_compare to check if it's the same team */
+            if (team_compare(conn, game_id, prev_id, winning_team, winning_team)) {
+                consecutive_wins++;
+                prev_game_id = prev_id;
+                
+                if (consecutive_wins >= max_consecutive_games) {
+                    break;
+                }
+            } else {
+                /* Not the same team composition, so break the streak */
+                break;
+            }
+        }
+        
+        /* Determine which team to promote */
+        int team_to_promote;
+        const char *type_str;
+        
+        if (consecutive_wins < max_consecutive_games) {
+            team_to_promote = winning_team;
+            type_str = "win_promoted";
+            printf("Autopromote: Win-promoted team %d (consecutive games: %d/%d)\n", 
+                   team_to_promote, consecutive_wins, max_consecutive_games);
+        } else {
+            team_to_promote = (winning_team == 1) ? 2 : 1;
+            type_str = "loss_promoted";
+            printf("Autopromote: Loss-promoted team %d (winners reached max consecutive games: %d)\n", 
+                   team_to_promote, max_consecutive_games);
+        }
+        
+        /* d. Increment queue positions for existing next-up players */
+        const char *increment_query = 
+            "UPDATE checkins SET queue_position = queue_position + $1 "
+            "WHERE game_set_id = $2 AND is_active = true AND game_id IS NULL AND "
+            "queue_position >= $3 "
+            "RETURNING id";
+        
+        char players_per_team_str[8];
+        char current_queue_position_str[8];
+        sprintf(players_per_team_str, "%d", players_per_team);
+        sprintf(current_queue_position_str, "%d", current_queue_position);
+        
+        const char *increment_params[3] = { 
+            players_per_team_str, set_id_str, current_queue_position_str 
+        };
+        
+        PGresult *increment_result = PQexecParams(conn, increment_query, 3, NULL, increment_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(increment_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Failed to increment queue positions: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(prev_games_result);
+            PQclear(increment_result);
+            return updated_id;
+        }
+        
+        int incremented_count = PQntuples(increment_result);
+        printf("Incremented %d players in the next-up queue\n", incremented_count);
+        PQclear(increment_result);
+        
+        /* e. Increment game_sets.queue_next_up */
+        const char *update_next_up_query = 
+            "UPDATE game_sets SET queue_next_up = queue_next_up + $1 "
+            "WHERE id = $2 RETURNING id";
+        
+        const char *update_next_up_params[2] = { players_per_team_str, set_id_str };
+        
+        PGresult *update_next_up_result = PQexecParams(conn, update_next_up_query, 2, NULL, update_next_up_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(update_next_up_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Failed to update queue_next_up: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(prev_games_result);
+            PQclear(update_next_up_result);
+            return updated_id;
+        }
+        
+        printf("Updated queue_next_up to %d\n", queue_next_up + players_per_team);
+        PQclear(update_next_up_result);
+        
+        /* f. Check in promoted team players */
+        const char *players_query =
+            "SELECT gp.user_id, gp.team, u.username, u.birth_year, "
+            "(SELECT COALESCE(c.queue_position - $1 + 1, 0) "
+            " FROM checkins c "
+            " WHERE c.game_id = gp.game_id AND c.user_id = gp.user_id AND c.team = gp.team "
+            " ORDER BY c.id DESC LIMIT 1) as relative_position "
+            "FROM game_players gp "
+            "JOIN users u ON gp.user_id = u.id "
+            "WHERE gp.game_id = $2 AND gp.team = $3 "
+            "ORDER BY u.username";
+        
+        char team_to_promote_str[8];
+        sprintf(team_to_promote_str, "%d", team_to_promote);
+        
+        const char *players_params[3] = { 
+            "1", // Base queue position for relative calculation 
+            game_id_str, 
+            team_to_promote_str 
+        };
+        
+        PGresult *players_result = PQexecParams(conn, players_query, 3, NULL, players_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(players_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Players query failed: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(prev_games_result);
+            PQclear(players_result);
+            return updated_id;
+        }
+        
+        /* Insert new checkins for promoted team players */
+        int promoted_count = 0;
+        
+        printf("Promoting %d players to positions starting at %d:\n", 
+               PQntuples(players_result), current_queue_position);
+        
+        for (int i = 0; i < PQntuples(players_result); i++) {
+            int user_id = atoi(PQgetvalue(players_result, i, 0));
+            int user_team = atoi(PQgetvalue(players_result, i, 1));
+            const char *username = PQgetvalue(players_result, i, 2);
+            int relative_pos = atoi(PQgetvalue(players_result, i, 4));
+            
+            /* Calculate new queue position based on relative position */
+            int new_pos = current_queue_position + relative_pos - 1;
+            
+            /* Insert new checkin for promoted player */
+            const char *insert_query = 
+                "INSERT INTO checkins "
+                "(user_id, game_set_id, club_index, check_in_time, check_in_date, "
+                "is_active, queue_position, type, team) "
+                "VALUES ($1, $2, "
+                "(SELECT club_index FROM games WHERE id = $3), "
+                "NOW(), CURRENT_DATE, true, $4, $5, NULL) "
+                "RETURNING id";
+            
+            char user_id_str[16];
+            char new_pos_str[16];
+            
+            sprintf(user_id_str, "%d", user_id);
+            sprintf(new_pos_str, "%d", new_pos);
+            
+            const char *insert_params[5] = { 
+                user_id_str, set_id_str, game_id_str, 
+                new_pos_str, type_str
+            };
+            
+            PGresult *insert_result = PQexecParams(conn, insert_query, 5, NULL, insert_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(insert_result) != PGRES_TUPLES_OK) {
+                fprintf(stderr, "Failed to create checkin for %s: %s\n", 
+                       username, PQerrorMessage(conn));
+                PQclear(insert_result);
+                continue;
+            }
+            
+            int checkin_id = atoi(PQgetvalue(insert_result, 0, 0));
+            printf("  %s promoted to position %d (checkin ID: %d, type: %s)\n", 
+                   username, new_pos, checkin_id, type_str);
+            
+            promoted_count++;
+            PQclear(insert_result);
+        }
+        
+        /* g. Check in non-promoted players with autoup=true */
+        /* Get players from the non-promoted team */
+        int other_team = (team_to_promote == 1) ? 2 : 1;
+        char other_team_str[8];
+        sprintf(other_team_str, "%d", other_team);
+        
+        const char *autoup_query =
+            "SELECT gp.user_id, u.username, u.autoup "
+            "FROM game_players gp "
+            "JOIN users u ON gp.user_id = u.id "
+            "WHERE gp.game_id = $1 AND gp.team = $2 AND u.autoup = true";
+        
+        const char *autoup_params[2] = { game_id_str, other_team_str };
+        
+        PGresult *autoup_result = PQexecParams(conn, autoup_query, 2, NULL, autoup_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(autoup_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Autoup query failed: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+            PQclear(game_result);
+            PQclear(update_result);
+            PQclear(set_result);
+            PQclear(set_config_result);
+            PQclear(prev_games_result);
+            PQclear(players_result);
+            PQclear(autoup_result);
+            return updated_id;
+        }
+        
+        /* Insert new checkins for autoup players */
+        int autoup_count = PQntuples(autoup_result);
+        
+        if (autoup_count > 0) {
+            printf("Auto-checking in %d players from the non-promoted team:\n", autoup_count);
+            
+            for (int i = 0; i < autoup_count; i++) {
+                int user_id = atoi(PQgetvalue(autoup_result, i, 0));
+                const char *username = PQgetvalue(autoup_result, i, 1);
+                
+                /* Get the current queue_next_up value */
+                const char *next_up_query = 
+                    "SELECT queue_next_up FROM game_sets WHERE id = $1";
+                
+                PGresult *next_up_result = PQexecParams(conn, next_up_query, 1, NULL, set_config_params, NULL, NULL, 0);
+                
+                if (PQresultStatus(next_up_result) != PGRES_TUPLES_OK) {
+                    fprintf(stderr, "Failed to get queue_next_up: %s\n", PQerrorMessage(conn));
+                    PQclear(next_up_result);
+                    continue;
+                }
+                
+                int current_next_up = atoi(PQgetvalue(next_up_result, 0, 0));
+                PQclear(next_up_result);
+                
+                /* Insert new checkin for autoup player */
+                const char *insert_query = 
+                    "INSERT INTO checkins "
+                    "(user_id, game_set_id, club_index, check_in_time, check_in_date, "
+                    "is_active, queue_position, type, team) "
+                    "VALUES ($1, $2, "
+                    "(SELECT club_index FROM games WHERE id = $3), "
+                    "NOW(), CURRENT_DATE, true, $4, 'autoup', NULL) "
+                    "RETURNING id";
+                
+                char user_id_str[16];
+                char next_up_str[16];
+                
+                sprintf(user_id_str, "%d", user_id);
+                sprintf(next_up_str, "%d", current_next_up);
+                
+                const char *insert_params[4] = { 
+                    user_id_str, set_id_str, game_id_str, next_up_str
+                };
+                
+                PGresult *insert_result = PQexecParams(conn, insert_query, 4, NULL, insert_params, NULL, NULL, 0);
+                
+                if (PQresultStatus(insert_result) != PGRES_TUPLES_OK) {
+                    fprintf(stderr, "Failed to create checkin for %s: %s\n", 
+                           username, PQerrorMessage(conn));
+                    PQclear(insert_result);
+                    continue;
+                }
+                
+                int checkin_id = atoi(PQgetvalue(insert_result, 0, 0));
+                printf("  %s auto-checked in at position %d (checkin ID: %d)\n", 
+                       username, current_next_up, checkin_id);
+                
+                PQclear(insert_result);
+                
+                /* Increment the queue_next_up by 1 */
+                const char *increment_next_up_query = 
+                    "UPDATE game_sets SET queue_next_up = queue_next_up + 1 "
+                    "WHERE id = $1 RETURNING queue_next_up";
+                
+                PGresult *increment_next_up_result = PQexecParams(conn, 
+                    increment_next_up_query, 1, NULL, set_config_params, NULL, NULL, 0);
+                
+                if (PQresultStatus(increment_next_up_result) != PGRES_TUPLES_OK) {
+                    fprintf(stderr, "Failed to increment queue_next_up: %s\n", PQerrorMessage(conn));
+                    PQclear(increment_next_up_result);
+                    continue;
+                }
+                
+                int new_next_up = atoi(PQgetvalue(increment_next_up_result, 0, 0));
+                printf("  Incremented queue_next_up to %d\n", new_next_up);
+                
+                PQclear(increment_next_up_result);
+            }
+        } else {
+            printf("No autoup players found in the non-promoted team\n");
+        }
+        
+        /* Commit the transaction */
+        PGresult *commit_result = PQexec(conn, "COMMIT");
+        if (PQresultStatus(commit_result) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "COMMIT command failed: %s\n", PQerrorMessage(conn));
+            PQexec(conn, "ROLLBACK");
+        } else {
+            printf("Autopromote completed successfully\n");
+        }
+        
+        PQclear(prev_games_result);
+        PQclear(players_result);
+        PQclear(autoup_result);
+        PQclear(commit_result);
+        PQclear(set_config_result);
+        PQclear(set_result);
+    } else {
+        printf("\nNext Steps:\n");
+        printf("1. Use 'promote %d win' to move winning team to Next Up queue\n", game_id);
+        printf("2. Use 'promote %d loss' to move losing team to Next Up queue\n", game_id);
+        printf("3. Use 'checkout' to remove players who don't want to continue\n");
+    }
     
     PQclear(game_result);
     PQclear(update_result);
@@ -2647,7 +3143,8 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
     }
     else if (strcmp(argv[1], "end-game") == 0) {
         if (argc < 5) {
-            printf("Usage: %s end-game <game_id> <home_score> <away_score>\n", argv[0]);
+            printf("Usage: %s end-game <game_id> <home_score> <away_score> [autopromote]\n", argv[0]);
+            printf("  autopromote: true|false (optional, default: true)\n");
             return;
         }
         
@@ -2669,7 +3166,21 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
             return;
         }
         
-        finalize_game(conn, game_id, home_score, away_score);
+        bool autopromote = true; // Default value
+        
+        // Check if autopromote parameter is provided
+        if (argc >= 6) {
+            if (strcmp(argv[5], "false") == 0) {
+                autopromote = false;
+            } else if (strcmp(argv[5], "true") == 0) {
+                autopromote = true;
+            } else {
+                printf("Invalid autopromote value: %s (must be true or false)\n", argv[5]);
+                return;
+            }
+        }
+        
+        finalize_game(conn, game_id, home_score, away_score, autopromote);
     }
     /* Backwards compatibility for the old "finalize" command */
     else if (strcmp(argv[1], "finalize") == 0) {
