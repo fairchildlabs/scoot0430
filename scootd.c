@@ -680,31 +680,28 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
         printf("  ]\n");
         printf("}\n");
     } else {
-        printf("=== Next Up Players (Game Set %d) ===\n", game_set_id);
-        printf("Current position: %d\n", current_position);
+        printf("\nNEXT UP:\n");
+        printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
+        printf("--------------------------------------------------\n");
         
         if (player_count == 0) {
             printf("No players in queue\n");
         } else {
-            printf("Position | Username | Age | OG | Check-in Type\n");
-            printf("------------------------------------------\n");
-            
             for (int i = 0; i < player_count; i++) {
+                int user_id = atoi(PQgetvalue(res, i, 1));
                 const char *username = PQgetvalue(res, i, 2);
                 const char *birth_year_str = PQgetvalue(res, i, 3);
                 int position = atoi(PQgetvalue(res, i, 4));
-                const char *age_str = PQgetvalue(res, i, 5);
                 const char *checkin_type = PQgetvalue(res, i, 6);
                 
                 int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
-                int age = age_str[0] != '\0' ? atoi(age_str) : 0;
                 bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
                 
-                printf("%d | %s | %s | %s | %s\n",
-                       position,
-                       username,
-                       age > 0 ? PQgetvalue(res, i, 5) : "N/A",
-                       is_og ? "Yes" : "No",
+                printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+                       position, 
+                       username, 
+                       user_id,
+                       is_og ? "Y" : "N",
                        checkin_type);
             }
         }
@@ -865,42 +862,50 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         printf("  ]\n");
         printf("}\n");
     } else {
-        printf("=== Proposed Game (Game Set %d, Court: %s) ===\n", game_set_id, court);
+        printf("=== Proposed Game (Game Set %d, Court: %s) ===\n\n", game_set_id, court);
         
-        printf("Team 1 (HOME):\n");
-        printf("Position | Username | OG\n");
-        printf("-------------------------\n");
+        printf("HOME TEAM:\n");
+        printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
+        printf("--------------------------------------------------\n");
         
         for (int i = 0; i < 4; i++) {
+            int user_id = atoi(PQgetvalue(res, i, 1));
             const char *username = PQgetvalue(res, i, 2);
             const char *birth_year_str = PQgetvalue(res, i, 3);
             int position = atoi(PQgetvalue(res, i, 4));
+            const char *checkin_type = PQgetvalue(res, i, 5);
             
             int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
-            printf("%d | %s | %s\n",
+            printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
                    position,
                    username,
-                   is_og ? "Yes" : "No");
+                   user_id,
+                   is_og ? "Y" : "N",
+                   checkin_type);
         }
         
-        printf("\nTeam 2 (AWAY):\n");
-        printf("Position | Username | OG\n");
-        printf("-------------------------\n");
+        printf("\nAWAY TEAM:\n");
+        printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
+        printf("--------------------------------------------------\n");
         
         for (int i = 4; i < 8; i++) {
+            int user_id = atoi(PQgetvalue(res, i, 1));
             const char *username = PQgetvalue(res, i, 2);
             const char *birth_year_str = PQgetvalue(res, i, 3);
             int position = atoi(PQgetvalue(res, i, 4));
+            const char *checkin_type = PQgetvalue(res, i, 5);
             
             int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
-            printf("%d | %s | %s\n",
+            printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
                    position,
                    username,
-                   is_og ? "Yes" : "No");
+                   user_id,
+                   is_og ? "Y" : "N",
+                   checkin_type);
         }
     }
     
@@ -1133,16 +1138,19 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             players_per_team = atoi(PQgetvalue(res, 0, 0));
         }
         
-        // Update current_queue_position by (2 * players_per_team) and queue_next_up
+        // Update current_queue_position and queue_next_up correctly
+        // Each check-in should increment queue_next_up by one.
+        // After the game, the queue_next_up should be current_queue_position + players_per_team
         PQclear(res);
         sprintf(query, 
                 "UPDATE game_sets SET "
                 "current_queue_position = current_queue_position + %d, "
-                "queue_next_up = "
-                "(SELECT MIN(queue_position) + 8 FROM checkins WHERE is_active = true) "
+                "queue_next_up = current_queue_position + %d "
                 "WHERE id = %d "
                 "RETURNING current_queue_position, queue_next_up", 
-                2 * players_per_team, game_set_id);
+                2 * players_per_team, // Increment current_queue_position for both teams
+                players_per_team,     // Set queue_next_up to be player_per_team ahead of current_queue_position
+                game_set_id);
                 
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK) {
