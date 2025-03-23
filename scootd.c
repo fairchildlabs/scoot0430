@@ -39,7 +39,6 @@ void run_sql_query(PGconn *conn, const char *query);
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
 void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote);
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
-bool team_compare(PGconn *conn, int game_id1, int game_id2);
 
 /**
  * Connect to the PostgreSQL database using environment variables
