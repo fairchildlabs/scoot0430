@@ -1888,22 +1888,52 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         int losing_team = winning_team == 1 ? 2 : 1;
         
         // Count consecutive wins for winning team
+        // First, get the player IDs for the winning team
         sprintf(query, 
-                "WITH team_players AS ("
-                "  SELECT array_agg(user_id) AS player_ids "
-                "  FROM game_players "
-                "  WHERE game_id = %d AND team = %d"
-                ") "
-                "SELECT COUNT(*) "
-                "FROM games g "
-                "JOIN game_players gp ON g.id = gp.game_id "
-                "WHERE g.set_id = %d "
+                "SELECT array_agg(user_id) AS player_ids "
+                "FROM game_players "
+                "WHERE game_id = %d AND team = %d",
+                game_id, winning_team);
+                
+        res = PQexec(conn, query);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+            fprintf(stderr, "Error getting winning team players: %s", PQerrorMessage(conn));
+            PQclear(res);
+            PQexec(conn, "ROLLBACK");
+            return;
+        }
+        
+        // Get the player array
+        const char *player_array = PQgetvalue(res, 0, 0);
+        PQclear(res);
+        
+        // Get the previous games with same players on winning team
+        // Look for games where the same players were on the winning team
+        // and won the game
+        sprintf(query, 
+                "WITH winning_games AS ( "
+                "  SELECT g.id, "
+                "         (CASE WHEN g.team1_score > g.team2_score THEN 1 ELSE 2 END) AS winning_team "
+                "  FROM games g "
+                "  WHERE g.set_id = %d "
                 "  AND g.state = 'completed' "
                 "  AND g.id != %d "
-                "GROUP BY g.id "
-                "HAVING COUNT(CASE WHEN (SELECT player_ids FROM team_players) @> ARRAY[gp.user_id] THEN 1 END) >= %d "
-                "ORDER BY g.id DESC",
-                game_id, winning_team, set_id, game_id, PLAYERS_PER_TEAM - 1);
+                "  ORDER BY g.id DESC "
+                ") "
+                "SELECT COUNT(*) "
+                "FROM winning_games wg "
+                "JOIN ( "
+                "  SELECT g.id, "
+                "         array_agg(user_id) FILTER (WHERE team = 1) AS team1_players, "
+                "         array_agg(user_id) FILTER (WHERE team = 2) AS team2_players "
+                "  FROM games g "
+                "  JOIN game_players gp ON g.id = gp.game_id "
+                "  WHERE g.id IN (SELECT id FROM winning_games) "
+                "  GROUP BY g.id "
+                ") teams ON wg.id = teams.id "
+                "WHERE (wg.winning_team = 1 AND teams.team1_players && '%s'::int[]) "
+                "   OR (wg.winning_team = 2 AND teams.team2_players && '%s'::int[])",
+                set_id, game_id, player_array, player_array);
         
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -1913,7 +1943,8 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             return;
         }
         
-        int consecutive_wins = PQntuples(res);
+        int consecutive_wins = atoi(PQgetvalue(res, 0, 0)) + 1; // +1 for the current game
+        printf("Team has won %d consecutive games (including current)\n", consecutive_wins);
         PQclear(res);
         
         // Determine which team to promote
@@ -2049,6 +2080,10 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         PQclear(update_next_up_res);
         
         // Get players from the non-promoted team who have autoup=true
+        // This will be the winning team if we're doing loss promotion
+        // or the losing team if we're doing win promotion
+        int team_with_autoup = (team_to_promote == losing_team) ? winning_team : losing_team;
+        
         sprintf(query, 
                 "SELECT gp.user_id, u.username "
                 "FROM game_players gp "
@@ -2056,7 +2091,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                 "WHERE gp.game_id = %d AND gp.team = %d "
                 "AND u.autoup = true "
                 "ORDER BY gp.relative_position",
-                game_id, team_to_promote == 1 ? 2 : 1);
+                game_id, team_with_autoup);
         
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK) {
