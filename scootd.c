@@ -1644,12 +1644,25 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         for (int i = 0; i < next_up_count; i++) {
             int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
             const char *username = PQgetvalue(next_up_result, i, 1);
-            const char *type = PQgetvalue(next_up_result, i, 2);
+            int user_id = atoi(PQgetvalue(next_up_result, i, 2));
+            const char *type = PQgetvalue(next_up_result, i, 3);
+            const char *team = PQgetvalue(next_up_result, i, 4);
+            const char *birth_year = PQgetvalue(next_up_result, i, 5);
+            
+            // Check if player is OG based on birth year
+            bool is_og = false;
+            if (!PQgetisnull(next_up_result, i, 5) && birth_year && *birth_year) {
+                int birth_year_int = atoi(birth_year);
+                is_og = birth_year_int <= 1980;  // players born in 1980 or earlier are OGs
+            }
             
             printf("    {\n");
             printf("      \"queue_position\": %d,\n", queue_position);
             printf("      \"username\": \"%s\",\n", username);
-            printf("      \"type\": \"%s\"\n", type);
+            printf("      \"user_id\": %d,\n", user_id);
+            printf("      \"type\": \"%s\",\n", type);
+            printf("      \"team\": %s,\n", team && *team ? team : "null");
+            printf("      \"is_og\": %s\n", is_og ? "true" : "false");
             if (i < next_up_count - 1) {
                 printf("    },\n");
             } else {
