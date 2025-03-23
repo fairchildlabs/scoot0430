@@ -946,7 +946,7 @@ void get_player_info(PGconn *conn, const char *username, const char *format) {
 }
 
 /* Finalize a game with scores */
-int finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score) {
+int finalize_game(PGconn *conn, int game_id, int home_score, int away_score) {
     /* First check if the game exists and is in 'started' state */
     const char *game_query = 
         "SELECT id, state FROM games WHERE id = $1";
@@ -993,8 +993,8 @@ int finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score) {
     char team1_str[16];
     char team2_str[16];
     
-    sprintf(team1_str, "%d", team1_score);
-    sprintf(team2_str, "%d", team2_score);
+    sprintf(team1_str, "%d", home_score);
+    sprintf(team2_str, "%d", away_score);
     
     const char *update_params[3] = { team1_str, team2_str, game_id_str };
     
@@ -1010,12 +1010,12 @@ int finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score) {
     int updated_id = atoi(PQgetvalue(update_result, 0, 0));
     
     printf("Successfully finalized game #%d with score %d-%d\n", 
-           updated_id, team1_score, team2_score);
+           updated_id, home_score, away_score);
     
     /* Print the game result */
     printf("Game result: %s\n", 
-           (team1_score == team2_score) ? "Tie game" : 
-           (team1_score > team2_score) ? "Team 1 wins" : "Team 2 wins");
+           (home_score == away_score) ? "Tie game" : 
+           (home_score > away_score) ? "Home team wins" : "Away team wins");
     
     printf("\nNext Steps:\n");
     printf("1. Use 'promote %d win' to move winning team to Next Up queue\n", game_id);
@@ -1670,7 +1670,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         // Create the game
         const char *create_game_query = 
             "INSERT INTO games (set_id, start_time, court, state, club_index) "
-            "VALUES ($1, NOW(), $2, 'pending', $3) "
+            "VALUES ($1, NOW(), $2, 'started', $3) "
             "RETURNING id";
             
         const char *game_params[3] = { set_id_str, court, club_index_str };
@@ -1899,7 +1899,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  new-game <game_set_id> <court> [format] - Create a new game (format: text|json, default: text)\n");
-        printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
+        printf("  end-game <game_id> <home_score> <away_score> - End a game and record the final scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -2015,9 +2015,9 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
             printf("No players were promoted\n");
         }
     }
-    else if (strcmp(argv[1], "finalize") == 0) {
+    else if (strcmp(argv[1], "end-game") == 0) {
         if (argc < 5) {
-            printf("Usage: %s finalize <game_id> <team1_score> <team2_score>\n", argv[0]);
+            printf("Usage: %s end-game <game_id> <home_score> <away_score>\n", argv[0]);
             return;
         }
         
@@ -2027,19 +2027,19 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
             return;
         }
         
-        int team1_score = atoi(argv[3]);
-        if (team1_score < 0) {
-            printf("Invalid team 1 score: %s (must be non-negative)\n", argv[3]);
+        int home_score = atoi(argv[3]);
+        if (home_score < 0) {
+            printf("Invalid home score: %s (must be non-negative)\n", argv[3]);
             return;
         }
         
-        int team2_score = atoi(argv[4]);
-        if (team2_score < 0) {
-            printf("Invalid team 2 score: %s (must be non-negative)\n", argv[4]);
+        int away_score = atoi(argv[4]);
+        if (away_score < 0) {
+            printf("Invalid away score: %s (must be non-negative)\n", argv[4]);
             return;
         }
         
-        finalize_game(conn, game_id, team1_score, team2_score);
+        finalize_game(conn, game_id, home_score, away_score);
     }
     else if (strcmp(argv[1], "next-up") == 0) {
         int game_set_id = 0;
