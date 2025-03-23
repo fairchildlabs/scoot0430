@@ -1394,7 +1394,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     
     // 2. Get NEXT UP PLAYERS (players without a game_id)
     const char *next_up_query = 
-        "SELECT c.queue_position, u.username, c.type "
+        "SELECT c.queue_position, u.username, u.id, c.type, c.team, u.birth_year "
         "FROM checkins c "
         "JOIN users u ON c.user_id = u.id "
         "WHERE c.is_active = true AND c.game_set_id = $1 AND c.game_id IS NULL "
@@ -1848,7 +1848,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             const char *game_params[1] = { game_id_str };
             
             const char *players_query = 
-                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username, u.id, u.birth_year "
                 "FROM game_players gp "
                 "JOIN users u ON gp.user_id = u.id "
                 "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
@@ -1868,9 +1868,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int relative_position = atoi(PQgetvalue(players_result, j, 1));
                     int queue_position = atoi(PQgetvalue(players_result, j, 2));
                     const char *username = PQgetvalue(players_result, j, 3);
+                    int user_id = atoi(PQgetvalue(players_result, j, 4));
+                    const char *birth_year = PQgetvalue(players_result, j, 5);
+                    int is_og = (birth_year && *birth_year) ? (atoi(birth_year) < 1980) : 0;
                     
                     if (team == 1) {
-                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                        printf("    #%d (%d): %s [ID: %d]%s\n", queue_position, relative_position, username, user_id, is_og ? " OG" : "");
                     }
                 }
                 
@@ -1881,6 +1884,9 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int relative_position = atoi(PQgetvalue(players_result, j, 1));
                     int queue_position = atoi(PQgetvalue(players_result, j, 2));
                     const char *username = PQgetvalue(players_result, j, 3);
+                    int user_id = atoi(PQgetvalue(players_result, j, 4));
+                    const char *birth_year = PQgetvalue(players_result, j, 5);
+                    int is_og = (birth_year && *birth_year) ? (atoi(birth_year) < 1980) : 0;
                     
                     if (team == 2) {
                         printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
