@@ -424,6 +424,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: (error as Error).message });
     }
   });
+  
+  // Add an endpoint to fix the currentQueuePosition for the active game set
+  app.post("/api/game-sets/fix-queue-position", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
+    
+    try {
+      // Find the active game set
+      const activeGameSets = await db
+        .select()
+        .from(gameSets)
+        .where(eq(gameSets.isActive, true))
+        .limit(1);
+      
+      if (activeGameSets.length === 0) {
+        return res.status(404).json({ error: "No active game set found" });
+      }
+      
+      const activeGameSet = activeGameSets[0];
+      
+      // Reset the currentQueuePosition to 1
+      await db
+        .update(gameSets)
+        .set({ currentQueuePosition: 1 })
+        .where(eq(gameSets.id, activeGameSet.id));
+      
+      console.log(`Fixed queue position for game set ${activeGameSet.id}`);
+      res.json({ message: "Queue position fixed", gameSetId: activeGameSet.id });
+    } catch (error) {
+      console.error('POST /api/game-sets/fix-queue-position - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
 
   // Add after the last endpoint
   app.post("/api/database/reset", async (req, res) => {
