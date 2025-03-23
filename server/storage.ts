@@ -1,5 +1,5 @@
 // Import dependencies
-import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, not, notInArray, or, sql } from "drizzle-orm";
 import session from "express-session";
 import PgSession from "connect-pg-simple";
 import { SessionOptions } from "express-session";
@@ -475,16 +475,25 @@ export class DatabaseStorage implements IStorage {
     // Deactivate only checkins for this game where user is not in promotedPlayers list
     if (promotionInfo) {
       // If we have promotion info, only deactivate non-promoted players
-      await db
-        .update(checkins)
-        .set({ isActive: false })
-        .where(
-          and(
-            eq(checkins.gameId, gameId),
-            // User is not in the promoted players list
-            sql`${checkins.userId} NOT IN (${promotedUserIds.join(',')})`
-          )
-        );
+      if (promotedUserIds.length > 0) {
+        // Use inArray and not() together to get "NOT IN" behavior
+        await db
+          .update(checkins)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(checkins.gameId, gameId),
+              // User is not in the promoted players list - avoid direct SQL with params
+              not(inArray(checkins.userId, promotedUserIds))
+            )
+          );
+      } else {
+        // No promoted players, so deactivate all for this game
+        await db
+          .update(checkins)
+          .set({ isActive: false })
+          .where(eq(checkins.gameId, gameId));
+      }
     } else {
       // No players were promoted, so deactivate all players for this game
       await db
@@ -524,15 +533,14 @@ export class DatabaseStorage implements IStorage {
           duplicateCheckins.map(c => `${c.username} (Type: ${c.type})`));
             
         // Deactivate these duplicate checkins
-        await db
-          .update(checkins)
-          .set({ isActive: false })
-          .where(
-            inArray(
-              checkins.id, 
-              duplicateCheckins.map(c => c.id)
-            )
-          );
+        const duplicateIds = duplicateCheckins.map(c => c.id);
+        
+        if (duplicateIds.length > 0) {
+          await db
+            .update(checkins)
+            .set({ isActive: false })
+            .where(inArray(checkins.id, duplicateIds));
+        }
       }
     }
       
