@@ -1279,7 +1279,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     PGresult *res;
     
     // Get game set details
-    sprintf(query, "SELECT id, created_by_id, club_index, court_count, max_consecutive_games, "
+    sprintf(query, "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
                   "current_queue_position, queue_next_up, created_at, is_active "
                   "FROM game_sets WHERE id = %d", game_set_id);
     
