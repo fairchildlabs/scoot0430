@@ -186,7 +186,7 @@ void list_active_games(PGconn *conn) {
 void show_active_game_set(PGconn *conn) {
     const char *query = 
         "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
-        "current_queue_position, queue_next_up, start_time "
+        "current_queue_position, queue_next_up, created_at "
         "FROM game_sets "
         "WHERE is_active = true";
     
@@ -394,7 +394,7 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
                     int team2_score = atoi(PQgetvalue(recent_res, i, 3));
                     const char *state = PQgetvalue(recent_res, i, 4);
                     int team = atoi(PQgetvalue(recent_res, i, 5));
-                    const char *start_time = PQgetvalue(recent_res, i, 6);
+                    const char *created_at = PQgetvalue(recent_res, i, 6);
                     
                     const char *result = "N/A";
                     if (strcmp(state, "completed") == 0) {
