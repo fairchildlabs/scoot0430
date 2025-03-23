@@ -557,15 +557,55 @@ int get_active_game_set_id(PGconn *conn) {
 
 /* Function to get next-up players for a given game set */
 void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
+    // First check if the game set exists
+    const char *check_query = 
+        "SELECT 1 FROM game_sets WHERE id = $1";
+    
+    char set_id_str[16];
+    sprintf(set_id_str, "%d", game_set_id);
+    const char *check_params[1] = { set_id_str };
+    
+    PGresult *check_result = PQexecParams(conn, check_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(check_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game set check query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        
+        if (format && strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when checking game set\"\n");
+            printf("}\n");
+        } else {
+            printf("Error checking game set: Database error\n");
+        }
+        return;
+    }
+    
+    if (PQntuples(check_result) == 0) {
+        PQclear(check_result);
+        
+        if (format && strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Invalid game_set_id: %d\"\n", game_set_id);
+            printf("}\n");
+        } else {
+            printf("Invalid game_set_id: %d\n", game_set_id);
+        }
+        return;
+    }
+    
+    PQclear(check_result);
+    
+    // If we got here, the game set exists, so continue with the original query
     const char *query = 
-        "SELECT c.queue_position, u.username, u.id, c.type, c.team "
+        "SELECT c.queue_position, u.username, u.id, c.type, c.team, u.birth_year "
         "FROM checkins c "
         "JOIN users u ON c.user_id = u.id "
         "WHERE c.is_active = true AND c.game_set_id = $1 AND c.game_id IS NULL "
         "ORDER BY c.queue_position";
     
-    char set_id_str[16];
-    sprintf(set_id_str, "%d", game_set_id);
     const char *params[1] = { set_id_str };
     
     PGresult *result = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
@@ -573,6 +613,15 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
     if (PQresultStatus(result) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Next-up players query failed: %s\n", PQerrorMessage(conn));
         PQclear(result);
+        
+        if (format && strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when fetching players\"\n");
+            printf("}\n");
+        } else {
+            printf("Error fetching players: Database error\n");
+        }
         return;
     }
     
@@ -580,6 +629,7 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
     
     if (format && strcmp(format, "json") == 0) {
         printf("{\n");
+        printf("  \"status\": \"SUCCESS\",\n");
         printf("  \"game_set_id\": %d,\n", game_set_id);
         printf("  \"next_up_players\": [\n");
         
@@ -595,12 +645,20 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                 team_str = PQgetvalue(result, i, 4);
             }
             
+            // Check if player is OG based on birth year
+            bool is_og = false;
+            if (!PQgetisnull(result, i, 5)) {
+                int birth_year = atoi(PQgetvalue(result, i, 5));
+                is_og = birth_year <= 1980;  // players born in 1980 or earlier are OGs
+            }
+            
             printf("    {\n");
             printf("      \"position\": %d,\n", position);
             printf("      \"username\": \"%s\",\n", username);
             printf("      \"user_id\": %d,\n", userId);
             printf("      \"type\": \"%s\",\n", type);
-            printf("      \"team\": %s\n", team_str);
+            printf("      \"team\": %s,\n", team_str);
+            printf("      \"is_og\": %s\n", is_og ? "true" : "false");
             printf("    }%s\n", (i < rows - 1) ? "," : "");
         }
         
@@ -610,8 +668,8 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
     } else {
         printf("Next-up players for game set #%d: %d found\n", game_set_id, rows);
         printf("------------------------------------------\n");
-        printf("%-8s | %-20s | %-10s | %-15s | %-5s\n", 
-               "Position", "Username", "User ID", "Type", "Team");
+        printf("%-8s | %-20s | %-10s | %-15s | %-5s | %-5s\n", 
+               "Position", "Username", "User ID", "Type", "Team", "OG");
         printf("------------------------------------------\n");
         
         for (int i = 0; i < rows; i++) {
@@ -625,8 +683,17 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                 team_str = PQgetvalue(result, i, 4);
             }
             
-            printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
-                   position, username, userId, type, team_str);
+            // Check if player is OG based on birth year
+            const char *og_str = "No";
+            if (!PQgetisnull(result, i, 5)) {
+                int birth_year = atoi(PQgetvalue(result, i, 5));
+                if (birth_year <= 1980) {  // players born in 1980 or earlier are OGs
+                    og_str = "Yes";
+                }
+            }
+            
+            printf("%-8d | %-20s | %-10d | %-15s | %-5s | %-5s\n", 
+                   position, username, userId, type, team_str, og_str);
         }
         
         if (rows == 0) {
@@ -1389,35 +1456,69 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         
         // If game_set_id is provided
         if (argc >= 3) {
-            game_set_id = atoi(argv[2]);
-            // Check if it's a valid number
-            if (game_set_id <= 0) {
-                // Maybe it's a format string instead
-                if (strcmp(argv[2], "json") == 0 || strcmp(argv[2], "text") == 0) {
-                    format = argv[2];
-                    game_set_id = get_active_game_set_id(conn);
-                } else {
-                    printf("Invalid game set ID: %s\n", argv[2]);
+            // Check if it's a format string first
+            if (strcmp(argv[2], "json") == 0 || strcmp(argv[2], "text") == 0) {
+                format = argv[2];
+                game_set_id = get_active_game_set_id(conn);
+                if (game_set_id <= 0) {
+                    if (strcmp(format, "json") == 0) {
+                        printf("{\n");
+                        printf("  \"status\": \"ERROR\",\n");
+                        printf("  \"message\": \"No active game set found\"\n");
+                        printf("}\n");
+                    } else {
+                        printf("Error: No active game set found\n");
+                    }
                     return;
                 }
-            } else if (argc >= 4) {
-                // Both game_set_id and format are provided
-                format = argv[3];
-                if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
-                    printf("Invalid format: %s (must be 'text' or 'json')\n", format);
+            } else {
+                // It should be a game_set_id
+                game_set_id = atoi(argv[2]);
+                if (game_set_id <= 0) {
+                    if (strcmp(format, "json") == 0) {
+                        printf("{\n");
+                        printf("  \"status\": \"ERROR\",\n");
+                        printf("  \"message\": \"Invalid game_set_id: %s\"\n", argv[2]);
+                        printf("}\n");
+                    } else {
+                        printf("Invalid game set ID: %s\n", argv[2]);
+                    }
                     return;
+                }
+                
+                // Check if format is provided
+                if (argc >= 4) {
+                    format = argv[3];
+                    if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
+                        if (strcmp(format, "json") == 0) {
+                            printf("{\n");
+                            printf("  \"status\": \"ERROR\",\n");
+                            printf("  \"message\": \"Invalid format: %s (must be 'text' or 'json')\"\n", format);
+                            printf("}\n");
+                        } else {
+                            printf("Invalid format: %s (must be 'text' or 'json')\n", format);
+                        }
+                        return;
+                    }
                 }
             }
         } else {
-            // Use active game set if none provided
+            // Use active game set if no ID provided
             game_set_id = get_active_game_set_id(conn);
+            if (game_set_id <= 0) {
+                if (strcmp(format, "json") == 0) {
+                    printf("{\n");
+                    printf("  \"status\": \"ERROR\",\n");
+                    printf("  \"message\": \"No active game set found\"\n");
+                    printf("}\n");
+                } else {
+                    printf("Error: No active game set found\n");
+                }
+                return;
+            }
         }
         
-        if (game_set_id > 0) {
-            get_next_up_players(conn, game_set_id, format);
-        } else {
-            printf("No active game set found and no game set ID provided\n");
-        }
+        get_next_up_players(conn, game_set_id, format);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
