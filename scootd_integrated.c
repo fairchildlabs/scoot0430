@@ -407,7 +407,7 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
                     
                     printf("%d | %s | %d | %d-%d | %s | %s\n",
                            game_id, court, team, team1_score, team2_score, 
-                           result, start_time);
+                           result, created_at);
                 }
             }
             
@@ -1280,7 +1280,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     
     // Get game set details
     sprintf(query, "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
-                  "current_queue_position, queue_next_up, start_time, is_active "
+                  "current_queue_position, queue_next_up, created_at, is_active "
                   "FROM game_sets WHERE id = %d", game_set_id);
     
     res = PQexec(conn, query);
