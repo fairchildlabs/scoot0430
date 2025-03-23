@@ -926,8 +926,8 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         
         // Create the game
         sprintf(query, 
-                "INSERT INTO games (set_id, court, team1_score, team2_score, state) "
-                "VALUES (%d, '%s', 0, 0, 'active') RETURNING id", 
+                "INSERT INTO games (set_id, court, team1_score, team2_score, state, start_time) "
+                "VALUES (%d, '%s', 0, 0, 'active', NOW()) RETURNING id", 
                 game_set_id, court);
                 
         res = PQexec(conn, query);
