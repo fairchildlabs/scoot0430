@@ -552,6 +552,143 @@ int get_active_game_set_id(PGconn *conn) {
     return game_set_id;
 }
 
+/* Get detailed player information */
+void get_player_info(PGconn *conn, const char *username) {
+    /* First get user details */
+    const char *user_query = 
+        "SELECT id, username, is_player, is_engineer, autoup, birth_year "
+        "FROM users WHERE username = $1";
+    
+    const char *user_params[1] = { username };
+    PGresult *user_result = PQexecParams(conn, user_query, 1, NULL, user_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(user_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to get user info: %s\n", PQerrorMessage(conn));
+        PQclear(user_result);
+        return;
+    }
+    
+    int user_rows = PQntuples(user_result);
+    if (user_rows == 0) {
+        printf("No user found with username '%s'\n", username);
+        PQclear(user_result);
+        return;
+    }
+    
+    int user_id = atoi(PQgetvalue(user_result, 0, 0));
+    const char *user_name = PQgetvalue(user_result, 0, 1);
+    int is_player = atoi(PQgetvalue(user_result, 0, 2));
+    int is_engineer = atoi(PQgetvalue(user_result, 0, 3));
+    int autoup = atoi(PQgetvalue(user_result, 0, 4));
+    
+    char *birth_year = NULL;
+    if (!PQgetisnull(user_result, 0, 5)) {
+        birth_year = PQgetvalue(user_result, 0, 5);
+    }
+    
+    printf("=== Player Information: %s (ID: %d) ===\n", user_name, user_id);
+    printf("Status: %s%s%s\n", 
+           is_player ? "Player " : "",
+           is_engineer ? "Engineer " : "",
+           autoup ? "Auto-Up" : "");
+    if (birth_year) {
+        printf("Birth Year: %s\n", birth_year);
+    }
+    
+    /* Get active checkins for this user */
+    const char *checkin_query = 
+        "SELECT id, queue_position, game_id, team, type, check_in_time "
+        "FROM checkins "
+        "WHERE user_id = $1 AND is_active = true "
+        "ORDER BY queue_position";
+    
+    char user_id_str[16];
+    sprintf(user_id_str, "%d", user_id);
+    const char *checkin_params[1] = { user_id_str };
+    
+    PGresult *checkin_result = PQexecParams(conn, checkin_query, 1, NULL, checkin_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(checkin_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to get checkin info: %s\n", PQerrorMessage(conn));
+        PQclear(user_result);
+        PQclear(checkin_result);
+        return;
+    }
+    
+    int checkin_rows = PQntuples(checkin_result);
+    printf("\nActive Checkins: %d\n", checkin_rows);
+    
+    for (int i = 0; i < checkin_rows; i++) {
+        int checkin_id = atoi(PQgetvalue(checkin_result, i, 0));
+        int position = atoi(PQgetvalue(checkin_result, i, 1));
+        
+        const char *game_id_str = "none";
+        if (!PQgetisnull(checkin_result, i, 2)) {
+            game_id_str = PQgetvalue(checkin_result, i, 2);
+        }
+        
+        const char *team_str = "none"; 
+        if (!PQgetisnull(checkin_result, i, 3)) {
+            team_str = PQgetvalue(checkin_result, i, 3);
+        }
+        
+        const char *type = PQgetvalue(checkin_result, i, 4);
+        const char *checkin_time = PQgetvalue(checkin_result, i, 5);
+        
+        printf("  Position %d (ID: %d)\n", position, checkin_id);
+        printf("    Game: %s, Team: %s, Type: %s\n", game_id_str, team_str, type);
+        printf("    Check-in Time: %s\n", checkin_time);
+    }
+    
+    /* Get player's game history */
+    const char *history_query = 
+        "SELECT g.id, g.state, g.court, gp.team, g.team1_score, g.team2_score, "
+        "       g.start_time, g.end_time "
+        "FROM game_players gp "
+        "JOIN games g ON gp.game_id = g.id "
+        "WHERE gp.user_id = $1 "
+        "ORDER BY g.start_time DESC LIMIT 5";
+    
+    PGresult *history_result = PQexecParams(conn, history_query, 1, NULL, checkin_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(history_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to get game history: %s\n", PQerrorMessage(conn));
+        PQclear(user_result);
+        PQclear(checkin_result);
+        PQclear(history_result);
+        return;
+    }
+    
+    int history_rows = PQntuples(history_result);
+    printf("\nRecent Games: %d\n", history_rows);
+    
+    for (int i = 0; i < history_rows; i++) {
+        int game_id = atoi(PQgetvalue(history_result, i, 0));
+        const char *state = PQgetvalue(history_result, i, 1);
+        const char *court = PQgetvalue(history_result, i, 2);
+        int team = atoi(PQgetvalue(history_result, i, 3));
+        int team1_score = atoi(PQgetvalue(history_result, i, 4));
+        int team2_score = atoi(PQgetvalue(history_result, i, 5));
+        const char *start_time = PQgetvalue(history_result, i, 6);
+        
+        const char *end_time = "In progress";
+        if (!PQgetisnull(history_result, i, 7)) {
+            end_time = PQgetvalue(history_result, i, 7);
+        }
+        
+        printf("  Game #%d on Court %s (State: %s)\n", game_id, court, state);
+        printf("    Team: %d, Score: %d-%d\n", team, team1_score, team2_score);
+        printf("    Started: %s\n", start_time);
+        if (strcmp(end_time, "In progress") != 0) {
+            printf("    Ended: %s\n", end_time);
+        }
+    }
+    
+    PQclear(user_result);
+    PQclear(checkin_result);
+    PQclear(history_result);
+}
+
 /* Handle player checkout */
 int checkout_player(PGconn *conn, int queue_position) {
     // First get information about the player's position
@@ -646,6 +783,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  active-games - List active games\n");
         printf("  active-game-set - Show active game set details\n");
         printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
+        printf("  player <username> - Show detailed information about a player\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -718,6 +856,14 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
             checkout_player(conn, position);
             printf("\n");
         }
+    }
+    else if (strcmp(argv[1], "player") == 0) {
+        if (argc < 3) {
+            printf("Usage: %s player <username>\n", argv[0]);
+            return;
+        }
+        
+        get_player_info(conn, argv[2]);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
