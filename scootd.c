@@ -1812,12 +1812,29 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         // Next up players
         printf("----- NEXT UP QUEUE (%d) -----\n\n", next_up_count);
         if (next_up_count > 0) {
+            printf("%-8s | %-20s | %-10s | %-15s | %-5s | %-5s\n", 
+                   "Position", "Username", "User ID", "Type", "Team", "OG");
+            printf("------------------------------------------------------------------\n");
+            
             for (int i = 0; i < next_up_count; i++) {
                 int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
                 const char *username = PQgetvalue(next_up_result, i, 1);
-                const char *type = PQgetvalue(next_up_result, i, 2);
+                int user_id = atoi(PQgetvalue(next_up_result, i, 2));
+                const char *type = PQgetvalue(next_up_result, i, 3);
+                const char *team = PQgetvalue(next_up_result, i, 4);
+                const char *birth_year = PQgetvalue(next_up_result, i, 5);
                 
-                printf("Position %d: %s (Type: %s)\n", queue_position, username, type);
+                // Check if player is OG based on birth year
+                const char *og_str = "No";
+                if (!PQgetisnull(next_up_result, i, 5)) {
+                    int birth_year_int = atoi(birth_year);
+                    if (birth_year_int <= 1980) {  // players born in 1980 or earlier are OGs
+                        og_str = "Yes";
+                    }
+                }
+                
+                printf("%-8d | %-20s | %-10d | %-15s | %-5s | %-5s\n", 
+                       queue_position, username, user_id, type, team ? team : "N/A", og_str);
             }
             printf("\n");
         } else {
@@ -1889,7 +1906,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int is_og = (birth_year && *birth_year) ? (atoi(birth_year) < 1980) : 0;
                     
                     if (team == 2) {
-                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                        printf("    #%d (%d): %s [ID: %d]%s\n", queue_position, relative_position, username, user_id, is_og ? " OG" : "");
                     }
                 }
                 
