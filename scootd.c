@@ -1609,7 +1609,8 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     
     // Create the game if requested
     int game_id = 0;
-    int stat = STAT_SUCCESS;
+    // Default status code
+    int stat_code = STAT_SUCCESS;
     
     if (bCreate) {
         // Begin a transaction
@@ -1867,6 +1868,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
+        printf("  new-game <game_set_id> <court> [format] - Create a new game (format: text|json, default: text)\n");
         printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
@@ -2100,7 +2102,31 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
             }
         }
         
-        propose_game(conn, game_set_id, court, format);
+        propose_game(conn, game_set_id, court, format, false);
+    }
+    else if (strcmp(argv[1], "new-game") == 0) {
+        if (argc < 4) {
+            printf("Usage: %s new-game <game_set_id> <court> [format]\n", argv[0]);
+            printf("       format: text|json (default: text)\n");
+            return;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        const char *court = argv[3];
+        const char *format = "text";
+        
+        // If format is provided
+        if (argc >= 5) {
+            if (strcmp(argv[4], "json") == 0 || strcmp(argv[4], "text") == 0) {
+                format = argv[4];
+            } else {
+                printf("Error: Invalid format '%s'. Valid formats are 'text' or 'json'.\n", argv[4]);
+                return;
+            }
+        }
+        
+        // Call propose_game with bCreate=true to actually create the game
+        propose_game(conn, game_set_id, court, format, true);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
