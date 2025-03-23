@@ -19,11 +19,9 @@ void get_next_up_players(PGconn *conn, int game_set_id, const char *format);
 void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format);
 
 /* Error handling helper */
-void handle_error(const char *message, PGconn *conn) 
-{
+void handle_error(const char *message, PGconn *conn) {
     fprintf(stderr, "ERROR: %s\n", message);
-    if (conn) 
-    {
+    if (conn) {
         fprintf(stderr, "DB says: %s\n", PQerrorMessage(conn));
         PQfinish(conn);
     }
@@ -31,31 +29,26 @@ void handle_error(const char *message, PGconn *conn)
 }
 
 /* Result set printing helper */
-void print_result(PGresult *result) 
-{
+void print_result(PGresult *result) {
     int rows = PQntuples(result);
     int cols = PQnfields(result);
     
     /* Print column headers */
     printf("Result set (%d rows):\n", rows);
-    for (int c = 0; c < cols; c++) 
-    {
+    for (int c = 0; c < cols; c++) {
         printf("%-15s", PQfname(result, c));
     }
     printf("\n");
     
     /* Print separator line */
-    for (int c = 0; c < cols; c++) 
-    {
+    for (int c = 0; c < cols; c++) {
         printf("--------------- ");
     }
     printf("\n");
     
     /* Print data rows */
-    for (int r = 0; r < rows; r++) 
-    {
-        for (int c = 0; c < cols; c++) 
-        {
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
             printf("%-15s", PQgetvalue(result, r, c));
         }
         printf("\n");
