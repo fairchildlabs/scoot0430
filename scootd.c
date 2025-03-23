@@ -25,6 +25,7 @@
 /* Function prototypes */
 void get_next_up_players(PGconn *conn, int game_set_id, const char *format);
 void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate);
+void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
 
 /* Error handling helper */
 void handle_error(const char *message, PGconn *conn) 
@@ -1312,6 +1313,595 @@ int checkout_player(PGconn *conn, int queue_position) {
     return checkin_id;
 }
 
+/* Function to get comprehensive game set status */
+void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
+    // First check if the game set exists
+    const char *check_game_set_query = 
+        "SELECT id, players_per_team, state, name, create_date, current_queue_position, "
+        "creator_id, is_active "
+        "FROM game_sets WHERE id = $1";
+    
+    char set_id_str[16];
+    sprintf(set_id_str, "%d", game_set_id);
+    const char *check_params[1] = { set_id_str };
+    
+    PGresult *check_result = PQexecParams(conn, check_game_set_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(check_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game set check query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when checking game set\"\n");
+            printf("}\n");
+        } else {
+            printf("Error checking game set: Database error\n");
+        }
+        return;
+    }
+    
+    if (PQntuples(check_result) == 0) {
+        PQclear(check_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Invalid game_set_id: %d\"\n", game_set_id);
+            printf("}\n");
+        } else {
+            printf("Invalid game_set_id: %d\n", game_set_id);
+        }
+        return;
+    }
+    
+    // Get game set basic info
+    const char *game_set_state = PQgetvalue(check_result, 0, 2);
+    const char *game_set_name = PQgetvalue(check_result, 0, 3);
+    const char *create_date = PQgetvalue(check_result, 0, 4);
+    int current_queue_position = atoi(PQgetvalue(check_result, 0, 5));
+    int players_per_team = atoi(PQgetvalue(check_result, 0, 1));
+    
+    // 1. Get ACTIVE GAMES
+    const char *active_games_query = 
+        "SELECT g.id, g.court, g.state, g.start_time, g.team1_score, g.team2_score "
+        "FROM games g "
+        "WHERE g.set_id = $1 AND g.state = 'started' "
+        "ORDER BY g.id";
+    
+    PGresult *active_games_result = PQexecParams(conn, active_games_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(active_games_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Active games query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        PQclear(active_games_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when fetching active games\"\n");
+            printf("}\n");
+        } else {
+            printf("Error fetching active games: Database error\n");
+        }
+        return;
+    }
+    
+    int active_games_count = PQntuples(active_games_result);
+    
+    // 2. Get NEXT UP PLAYERS (players without a game_id)
+    const char *next_up_query = 
+        "SELECT c.queue_position, u.username, c.type "
+        "FROM checkins c "
+        "JOIN users u ON c.user_id = u.id "
+        "WHERE c.is_active = true AND c.game_set_id = $1 AND c.game_id IS NULL "
+        "ORDER BY c.queue_position";
+    
+    PGresult *next_up_result = PQexecParams(conn, next_up_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(next_up_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Next up query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        PQclear(active_games_result);
+        PQclear(next_up_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when fetching next up players\"\n");
+            printf("}\n");
+        } else {
+            printf("Error fetching next up players: Database error\n");
+        }
+        return;
+    }
+    
+    int next_up_count = PQntuples(next_up_result);
+    
+    // 3. Get COMPLETED GAMES
+    const char *completed_games_query = 
+        "SELECT g.id, g.court, g.start_time, g.end_time, g.team1_score, g.team2_score "
+        "FROM games g "
+        "WHERE g.set_id = $1 AND g.state = 'final' "
+        "ORDER BY g.id";
+    
+    PGresult *completed_games_result = PQexecParams(conn, completed_games_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(completed_games_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Completed games query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        PQclear(active_games_result);
+        PQclear(next_up_result);
+        PQclear(completed_games_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when fetching completed games\"\n");
+            printf("}\n");
+        } else {
+            printf("Error fetching completed games: Database error\n");
+        }
+        return;
+    }
+    
+    int completed_games_count = PQntuples(completed_games_result);
+    
+    // 4. Calculate game set statistics
+    // Get the first game's start time and the last game's end time
+    const char *game_set_time_query = 
+        "SELECT "
+        "  (SELECT MIN(start_time) FROM games WHERE set_id = $1) as first_game_time, "
+        "  (SELECT MAX(end_time) FROM games WHERE set_id = $1 AND state = 'final') as last_game_time, "
+        "  (SELECT COUNT(DISTINCT user_id) FROM checkins WHERE game_set_id = $1) as unique_players, "
+        "  (SELECT COUNT(*) FROM games WHERE set_id = $1) as total_games";
+    
+    PGresult *game_set_time_result = PQexecParams(conn, game_set_time_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(game_set_time_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game set time query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        PQclear(active_games_result);
+        PQclear(next_up_result);
+        PQclear(completed_games_result);
+        PQclear(game_set_time_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when calculating game set statistics\"\n");
+            printf("}\n");
+        } else {
+            printf("Error calculating game set statistics: Database error\n");
+        }
+        return;
+    }
+    
+    // Format start time
+    const char *first_game_time = NULL;
+    if (!PQgetisnull(game_set_time_result, 0, 0)) {
+        first_game_time = PQgetvalue(game_set_time_result, 0, 0);
+    }
+    
+    // Format end time
+    const char *last_game_time = NULL;
+    if (!PQgetisnull(game_set_time_result, 0, 1)) {
+        last_game_time = PQgetvalue(game_set_time_result, 0, 1);
+    }
+    
+    // Get unique players and total games count
+    int unique_players = 0;
+    if (!PQgetisnull(game_set_time_result, 0, 2)) {
+        unique_players = atoi(PQgetvalue(game_set_time_result, 0, 2));
+    }
+    
+    int total_games = 0;
+    if (!PQgetisnull(game_set_time_result, 0, 3)) {
+        total_games = atoi(PQgetvalue(game_set_time_result, 0, 3));
+    }
+    
+    // Calculate elapsed time if we have both start and end times
+    char elapsed_time_str[100] = "N/A";
+    if (first_game_time != NULL && last_game_time != NULL) {
+        // Parse the timestamps
+        struct tm start_tm = {0}, end_tm = {0};
+        char start_date[20], start_time[20];
+        char end_date[20], end_time[20];
+        
+        // Parse start time: 2025-03-23 12:13:39.074
+        sscanf(first_game_time, "%s %s", start_date, start_time);
+        sscanf(start_date, "%d-%d-%d", &start_tm.tm_year, &start_tm.tm_mon, &start_tm.tm_mday);
+        sscanf(start_time, "%d:%d:%lf", &start_tm.tm_hour, &start_tm.tm_min, &start_tm.tm_sec);
+        start_tm.tm_year -= 1900; // Adjust year
+        start_tm.tm_mon -= 1;    // Adjust month (0-based)
+        
+        // Parse end time: 2025-03-23 12:15:59.590
+        sscanf(last_game_time, "%s %s", end_date, end_time);
+        sscanf(end_date, "%d-%d-%d", &end_tm.tm_year, &end_tm.tm_mon, &end_tm.tm_mday);
+        sscanf(end_time, "%d:%d:%lf", &end_tm.tm_hour, &end_tm.tm_min, &end_tm.tm_sec);
+        end_tm.tm_year -= 1900;  // Adjust year
+        end_tm.tm_mon -= 1;     // Adjust month (0-based)
+        
+        // Convert to time_t for easier calculation
+        time_t start_time_t = mktime(&start_tm);
+        time_t end_time_t = mktime(&end_tm);
+        
+        // Calculate difference in seconds
+        double diff_seconds = difftime(end_time_t, start_time_t);
+        
+        // Format elapsed time as hours:minutes:seconds
+        int hours = (int)diff_seconds / 3600;
+        int minutes = ((int)diff_seconds % 3600) / 60;
+        int seconds = (int)diff_seconds % 60;
+        
+        sprintf(elapsed_time_str, "%02d:%02d:%02d", hours, minutes, seconds);
+    }
+    
+    // Output the results
+    if (strcmp(format, "json") == 0) {
+        printf("{\n");
+        printf("  \"status\": \"SUCCESS\",\n");
+        printf("  \"game_set\": {\n");
+        printf("    \"id\": %d,\n", game_set_id);
+        printf("    \"name\": \"%s\",\n", game_set_name);
+        printf("    \"state\": \"%s\",\n", game_set_state);
+        printf("    \"create_date\": \"%s\",\n", create_date);
+        printf("    \"current_queue_position\": %d,\n", current_queue_position);
+        printf("    \"players_per_team\": %d,\n", players_per_team);
+        printf("    \"total_games\": %d,\n", total_games);
+        printf("    \"unique_players\": %d,\n", unique_players);
+        
+        if (first_game_time != NULL) {
+            printf("    \"start_time\": \"%s\",\n", first_game_time);
+        } else {
+            printf("    \"start_time\": null,\n");
+        }
+        
+        if (last_game_time != NULL) {
+            printf("    \"end_time\": \"%s\",\n", last_game_time);
+        } else {
+            printf("    \"end_time\": null,\n");
+        }
+        
+        printf("    \"elapsed_time\": \"%s\"\n", elapsed_time_str);
+        printf("  },\n");
+        
+        // Active games
+        printf("  \"active_games\": [\n");
+        for (int i = 0; i < active_games_count; i++) {
+            int game_id = atoi(PQgetvalue(active_games_result, i, 0));
+            const char *court = PQgetvalue(active_games_result, i, 1);
+            const char *state = PQgetvalue(active_games_result, i, 2);
+            const char *start_time = PQgetvalue(active_games_result, i, 3);
+            int team1_score = atoi(PQgetvalue(active_games_result, i, 4));
+            int team2_score = atoi(PQgetvalue(active_games_result, i, 5));
+            
+            printf("    {\n");
+            printf("      \"id\": %d,\n", game_id);
+            printf("      \"court\": \"%s\",\n", court);
+            printf("      \"state\": \"%s\",\n", state);
+            printf("      \"start_time\": \"%s\",\n", start_time);
+            printf("      \"team1_score\": %d,\n", team1_score);
+            printf("      \"team2_score\": %d,\n", team2_score);
+            
+            // Get players for this game
+            char game_id_str[16];
+            sprintf(game_id_str, "%d", game_id);
+            const char *game_params[1] = { game_id_str };
+            
+            const char *players_query = 
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "FROM game_players gp "
+                "JOIN users u ON gp.user_id = u.id "
+                "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
+                "WHERE gp.game_id = $1 "
+                "ORDER BY gp.team, gp.relative_position";
+            
+            PGresult *players_result = PQexecParams(conn, players_query, 1, NULL, game_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(players_result) == PGRES_TUPLES_OK) {
+                int player_count = PQntuples(players_result);
+                
+                printf("      \"players\": [\n");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    printf("        {\n");
+                    printf("          \"username\": \"%s\",\n", username);
+                    printf("          \"team\": %d,\n", team);
+                    printf("          \"relative_position\": %d,\n", relative_position);
+                    printf("          \"queue_position\": %d\n", queue_position);
+                    if (j < player_count - 1) {
+                        printf("        },\n");
+                    } else {
+                        printf("        }\n");
+                    }
+                }
+                printf("      ]\n");
+                
+                PQclear(players_result);
+            } else {
+                printf("      \"players\": []\n");
+            }
+            
+            if (i < active_games_count - 1) {
+                printf("    },\n");
+            } else {
+                printf("    }\n");
+            }
+        }
+        printf("  ],\n");
+        
+        // Next up players
+        printf("  \"next_up\": [\n");
+        for (int i = 0; i < next_up_count; i++) {
+            int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
+            const char *username = PQgetvalue(next_up_result, i, 1);
+            const char *type = PQgetvalue(next_up_result, i, 2);
+            
+            printf("    {\n");
+            printf("      \"queue_position\": %d,\n", queue_position);
+            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"type\": \"%s\"\n", type);
+            if (i < next_up_count - 1) {
+                printf("    },\n");
+            } else {
+                printf("    }\n");
+            }
+        }
+        printf("  ],\n");
+        
+        // Completed games
+        printf("  \"completed_games\": [\n");
+        for (int i = 0; i < completed_games_count; i++) {
+            int game_id = atoi(PQgetvalue(completed_games_result, i, 0));
+            const char *court = PQgetvalue(completed_games_result, i, 1);
+            const char *start_time = PQgetvalue(completed_games_result, i, 2);
+            const char *end_time = PQgetvalue(completed_games_result, i, 3);
+            int team1_score = atoi(PQgetvalue(completed_games_result, i, 4));
+            int team2_score = atoi(PQgetvalue(completed_games_result, i, 5));
+            
+            printf("    {\n");
+            printf("      \"id\": %d,\n", game_id);
+            printf("      \"court\": \"%s\",\n", court);
+            printf("      \"start_time\": \"%s\",\n", start_time);
+            printf("      \"end_time\": \"%s\",\n", end_time);
+            printf("      \"team1_score\": %d,\n", team1_score);
+            printf("      \"team2_score\": %d,\n", team2_score);
+            printf("      \"result\": \"%s\",\n", 
+                  team1_score == team2_score ? "Tie" : 
+                  team1_score > team2_score ? "Team 1 won" : "Team 2 won");
+            
+            // Get players for this game
+            char game_id_str[16];
+            sprintf(game_id_str, "%d", game_id);
+            const char *game_params[1] = { game_id_str };
+            
+            const char *players_query = 
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "FROM game_players gp "
+                "JOIN users u ON gp.user_id = u.id "
+                "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
+                "WHERE gp.game_id = $1 "
+                "ORDER BY gp.team, gp.relative_position";
+            
+            PGresult *players_result = PQexecParams(conn, players_query, 1, NULL, game_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(players_result) == PGRES_TUPLES_OK) {
+                int player_count = PQntuples(players_result);
+                
+                printf("      \"players\": [\n");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    printf("        {\n");
+                    printf("          \"username\": \"%s\",\n", username);
+                    printf("          \"team\": %d,\n", team);
+                    printf("          \"relative_position\": %d,\n", relative_position);
+                    printf("          \"queue_position\": %d\n", queue_position);
+                    if (j < player_count - 1) {
+                        printf("        },\n");
+                    } else {
+                        printf("        }\n");
+                    }
+                }
+                printf("      ]\n");
+                
+                PQclear(players_result);
+            } else {
+                printf("      \"players\": []\n");
+            }
+            
+            if (i < completed_games_count - 1) {
+                printf("    },\n");
+            } else {
+                printf("    }\n");
+            }
+        }
+        printf("  ]\n");
+        printf("}\n");
+    } else {
+        printf("\n===== GAME SET #%d STATUS =====\n\n", game_set_id);
+        printf("Name: %s\n", game_set_name);
+        printf("State: %s\n", game_set_state);
+        printf("Create Date: %s\n", create_date);
+        printf("Current Queue Position: %d\n", current_queue_position);
+        printf("Players Per Team: %d\n", players_per_team);
+        printf("Total Games: %d\n", total_games);
+        printf("Unique Players: %d\n\n", unique_players);
+        
+        printf("Start Time: %s\n", first_game_time ? first_game_time : "N/A");
+        printf("End Time: %s\n", last_game_time ? last_game_time : "N/A");
+        printf("Elapsed Time: %s\n\n", elapsed_time_str);
+        
+        // Active games
+        printf("----- ACTIVE GAMES (%d) -----\n\n", active_games_count);
+        for (int i = 0; i < active_games_count; i++) {
+            int game_id = atoi(PQgetvalue(active_games_result, i, 0));
+            const char *court = PQgetvalue(active_games_result, i, 1);
+            const char *start_time = PQgetvalue(active_games_result, i, 3);
+            int team1_score = atoi(PQgetvalue(active_games_result, i, 4));
+            int team2_score = atoi(PQgetvalue(active_games_result, i, 5));
+            
+            printf("Game #%d (Court %s):\n", game_id, court);
+            printf("  Started: %s\n", start_time);
+            printf("  Current Score: %d-%d\n\n", team1_score, team2_score);
+            
+            // Get players for this game
+            char game_id_str[16];
+            sprintf(game_id_str, "%d", game_id);
+            const char *game_params[1] = { game_id_str };
+            
+            const char *players_query = 
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "FROM game_players gp "
+                "JOIN users u ON gp.user_id = u.id "
+                "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
+                "WHERE gp.game_id = $1 "
+                "ORDER BY gp.team, gp.relative_position";
+            
+            PGresult *players_result = PQexecParams(conn, players_query, 1, NULL, game_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(players_result) == PGRES_TUPLES_OK) {
+                int player_count = PQntuples(players_result);
+                
+                printf("  Players:\n");
+                printf("  Team 1:\n");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    if (team == 1) {
+                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                    }
+                }
+                
+                printf("  Team 2:\n");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    if (team == 2) {
+                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                    }
+                }
+                
+                PQclear(players_result);
+            }
+            printf("\n");
+        }
+        
+        if (active_games_count == 0) {
+            printf("No active games found.\n\n");
+        }
+        
+        // Next up players
+        printf("----- NEXT UP QUEUE (%d) -----\n\n", next_up_count);
+        if (next_up_count > 0) {
+            for (int i = 0; i < next_up_count; i++) {
+                int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
+                const char *username = PQgetvalue(next_up_result, i, 1);
+                const char *type = PQgetvalue(next_up_result, i, 2);
+                
+                printf("Position %d: %s (Type: %s)\n", queue_position, username, type);
+            }
+            printf("\n");
+        } else {
+            printf("No players in the next-up queue.\n\n");
+        }
+        
+        // Completed games
+        printf("----- COMPLETED GAMES (%d) -----\n\n", completed_games_count);
+        for (int i = 0; i < completed_games_count; i++) {
+            int game_id = atoi(PQgetvalue(completed_games_result, i, 0));
+            const char *court = PQgetvalue(completed_games_result, i, 1);
+            const char *start_time = PQgetvalue(completed_games_result, i, 2);
+            const char *end_time = PQgetvalue(completed_games_result, i, 3);
+            int team1_score = atoi(PQgetvalue(completed_games_result, i, 4));
+            int team2_score = atoi(PQgetvalue(completed_games_result, i, 5));
+            
+            printf("Game #%d (Court %s):\n", game_id, court);
+            printf("  Started: %s\n", start_time);
+            printf("  Ended: %s\n", end_time);
+            printf("  Final Score: %d-%d (%s)\n\n", 
+                  team1_score, team2_score,
+                  team1_score == team2_score ? "Tie" : 
+                  team1_score > team2_score ? "Team 1 won" : "Team 2 won");
+            
+            // Get players for this game
+            char game_id_str[16];
+            sprintf(game_id_str, "%d", game_id);
+            const char *game_params[1] = { game_id_str };
+            
+            const char *players_query = 
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "FROM game_players gp "
+                "JOIN users u ON gp.user_id = u.id "
+                "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
+                "WHERE gp.game_id = $1 "
+                "ORDER BY gp.team, gp.relative_position";
+            
+            PGresult *players_result = PQexecParams(conn, players_query, 1, NULL, game_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(players_result) == PGRES_TUPLES_OK) {
+                int player_count = PQntuples(players_result);
+                
+                printf("  Players:\n");
+                printf("  Team 1 (%s):\n", team1_score > team2_score ? "WINNER" : 
+                                           team1_score < team2_score ? "LOSER" : "TIE");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    if (team == 1) {
+                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                    }
+                }
+                
+                printf("  Team 2 (%s):\n", team2_score > team1_score ? "WINNER" : 
+                                           team2_score < team1_score ? "LOSER" : "TIE");
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(players_result, j, 0));
+                    int relative_position = atoi(PQgetvalue(players_result, j, 1));
+                    int queue_position = atoi(PQgetvalue(players_result, j, 2));
+                    const char *username = PQgetvalue(players_result, j, 3);
+                    
+                    if (team == 2) {
+                        printf("    %d. %s (Pos %d)\n", relative_position, username, queue_position);
+                    }
+                }
+                
+                PQclear(players_result);
+            }
+            printf("\n");
+        }
+        
+        if (completed_games_count == 0) {
+            printf("No completed games found.\n\n");
+        }
+    }
+    
+    // Clean up
+    PQclear(check_result);
+    PQclear(active_games_result);
+    PQclear(next_up_result);
+    PQclear(completed_games_result);
+    PQclear(game_set_time_result);
+}
+
 /* Function to propose a game without creating it */
 void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate) {
     // First check if the game set exists
@@ -1900,6 +2490,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  new-game <game_set_id> <court> [format] - Create a new game (format: text|json, default: text)\n");
         printf("  end-game <game_id> <home_score> <away_score> - End a game and record the final scores\n");
+        printf("  game-set-status <game_set_id> [format] - Show detailed status of a game set (format: text|json, default: text)\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -2186,6 +2777,32 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         
         // Call propose_game with bCreate=true to actually create the game
         propose_game(conn, game_set_id, court, format, true);
+    }
+    else if (strcmp(argv[1], "game-set-status") == 0) {
+        if (argc < 3) {
+            printf("Usage: %s game-set-status <game_set_id> [format]\n", argv[0]);
+            printf("       format: text|json (default: text)\n");
+            return;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        if (game_set_id <= 0) {
+            printf("Invalid game set ID: %s\n", argv[2]);
+            return;
+        }
+        
+        const char *format = "text";
+        // If format is provided
+        if (argc >= 4) {
+            if (strcmp(argv[3], "json") == 0 || strcmp(argv[3], "text") == 0) {
+                format = argv[3];
+            } else {
+                printf("Error: Invalid format '%s'. Valid formats are 'text' or 'json'.\n", argv[3]);
+                return;
+            }
+        }
+        
+        get_game_set_status(conn, game_set_id, format);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
