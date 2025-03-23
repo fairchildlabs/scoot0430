@@ -1095,27 +1095,67 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             PQclear(insert_res);
         }
         
-        // Update queue position to start after the players we just assigned
+        // Set is_active = FALSE for players in the new game
         PQclear(res);
         sprintf(query, 
-                "UPDATE game_sets SET queue_next_up = "
-                "(SELECT MIN(queue_position) + 8 FROM checkins WHERE is_active = true) "
-                "WHERE id = %d RETURNING queue_next_up", 
-                game_set_id);
+                "UPDATE checkins SET is_active = FALSE "
+                "WHERE game_id = %d "
+                "RETURNING id", 
+                game_id);
                 
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-            fprintf(stderr, "Error updating queue position: %s", PQerrorMessage(conn));
+            fprintf(stderr, "Error deactivating player check-ins: %s", PQerrorMessage(conn));
             PQclear(res);
             PQexec(conn, "ROLLBACK");
             
             if (strcmp(format, "json") == 0) {
                 printf("{\n");
                 printf("  \"status\": \"ERROR\",\n");
-                printf("  \"message\": \"Database error: Could not update queue position\"\n");
+                printf("  \"message\": \"Database error: Could not deactivate player check-ins\"\n");
                 printf("}\n");
             } else {
-                printf("Error: Could not update queue position\n");
+                printf("Error: Could not deactivate player check-ins\n");
+            }
+            return;
+        }
+        
+        // Get the players_per_team value from game_set
+        int players_per_team = 4; // Default value
+        PQclear(res);
+        sprintf(query, 
+                "SELECT players_per_team FROM game_sets WHERE id = %d", 
+                game_set_id);
+                
+        res = PQexec(conn, query);
+        if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+            players_per_team = atoi(PQgetvalue(res, 0, 0));
+        }
+        
+        // Update current_queue_position by (2 * players_per_team) and queue_next_up
+        PQclear(res);
+        sprintf(query, 
+                "UPDATE game_sets SET "
+                "current_queue_position = current_queue_position + %d, "
+                "queue_next_up = "
+                "(SELECT MIN(queue_position) + 8 FROM checkins WHERE is_active = true) "
+                "WHERE id = %d "
+                "RETURNING current_queue_position, queue_next_up", 
+                2 * players_per_team, game_set_id);
+                
+        res = PQexec(conn, query);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Error updating queue positions: %s", PQerrorMessage(conn));
+            PQclear(res);
+            PQexec(conn, "ROLLBACK");
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Database error: Could not update queue positions\"\n");
+                printf("}\n");
+            } else {
+                printf("Error: Could not update queue positions\n");
             }
             return;
         }
