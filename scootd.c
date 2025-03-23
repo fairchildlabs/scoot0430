@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <libpq-fe.h>
+#include <time.h>
 
 /* Database connection string */
 #define MAX_CONN_INFO_LEN 256
@@ -1317,8 +1318,8 @@ int checkout_player(PGconn *conn, int queue_position) {
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     // First check if the game set exists
     const char *check_game_set_query = 
-        "SELECT id, players_per_team, state, name, create_date, current_queue_position, "
-        "creator_id, is_active "
+        "SELECT id, players_per_team, is_active, gym, created_at, current_queue_position, "
+        "created_by "
         "FROM game_sets WHERE id = $1";
     
     char set_id_str[16];
@@ -1357,9 +1358,10 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     }
     
     // Get game set basic info
-    const char *game_set_state = PQgetvalue(check_result, 0, 2);
-    const char *game_set_name = PQgetvalue(check_result, 0, 3);
-    const char *create_date = PQgetvalue(check_result, 0, 4);
+    const char *game_set_active = PQgetvalue(check_result, 0, 2);
+    const char *game_set_state = game_set_active[0] == 't' ? "active" : "ended";
+    const char *game_set_name = PQgetvalue(check_result, 0, 3);  // gym name
+    const char *create_date = PQgetvalue(check_result, 0, 4);    // created_at
     int current_queue_position = atoi(PQgetvalue(check_result, 0, 5));
     int players_per_team = atoi(PQgetvalue(check_result, 0, 1));
     
@@ -1505,21 +1507,22 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     char elapsed_time_str[100] = "N/A";
     if (first_game_time != NULL && last_game_time != NULL) {
         // Parse the timestamps
-        struct tm start_tm = {0}, end_tm = {0};
+        struct tm start_tm = {0};
+        struct tm end_tm = {0};
         char start_date[20], start_time[20];
         char end_date[20], end_time[20];
         
         // Parse start time: 2025-03-23 12:13:39.074
         sscanf(first_game_time, "%s %s", start_date, start_time);
         sscanf(start_date, "%d-%d-%d", &start_tm.tm_year, &start_tm.tm_mon, &start_tm.tm_mday);
-        sscanf(start_time, "%d:%d:%lf", &start_tm.tm_hour, &start_tm.tm_min, &start_tm.tm_sec);
+        sscanf(start_time, "%d:%d:%d", &start_tm.tm_hour, &start_tm.tm_min, &start_tm.tm_sec);
         start_tm.tm_year -= 1900; // Adjust year
         start_tm.tm_mon -= 1;    // Adjust month (0-based)
         
         // Parse end time: 2025-03-23 12:15:59.590
         sscanf(last_game_time, "%s %s", end_date, end_time);
         sscanf(end_date, "%d-%d-%d", &end_tm.tm_year, &end_tm.tm_mon, &end_tm.tm_mday);
-        sscanf(end_time, "%d:%d:%lf", &end_tm.tm_hour, &end_tm.tm_min, &end_tm.tm_sec);
+        sscanf(end_time, "%d:%d:%d", &end_tm.tm_hour, &end_tm.tm_min, &end_tm.tm_sec);
         end_tm.tm_year -= 1900;  // Adjust year
         end_tm.tm_mon -= 1;     // Adjust month (0-based)
         
