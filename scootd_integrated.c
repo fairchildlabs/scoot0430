@@ -704,7 +704,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                        username,
                        age > 0 ? PQgetvalue(res, i, 5) : "N/A",
                        is_og ? "Yes" : "No",
-                       type);
+                       checkin_type);
             }
         }
     }
@@ -1126,7 +1126,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                 printf("      \"birth_year\": null,\n");
             }
             printf("      \"is_og\": %s,\n", is_og ? "true" : "false");
-            printf("      \"checkin_type\": \"%s\"\n", type);
+            printf("      \"checkin_type\": \"%s\"\n", checkin_type);
             printf("    }%s\n", i < next_up_count - 1 ? "," : "");
         }
         
@@ -1308,7 +1308,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                 printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
                        position, username, user_id, 
                        is_og ? "Yes" : "No", 
-                       type);
+                       checkin_type);
             }
         } else {
             printf("No players in queue\n");
