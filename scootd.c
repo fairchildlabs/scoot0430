@@ -689,6 +689,206 @@ void get_player_info(PGconn *conn, const char *username) {
     PQclear(history_result);
 }
 
+/* Handle game promotion (winners or losers) */
+int promote_game_players(PGconn *conn, int game_id, const char *promotion_type) {
+    if (strcmp(promotion_type, "win") != 0 && strcmp(promotion_type, "loss") != 0) {
+        fprintf(stderr, "Invalid promotion type: %s (must be 'win' or 'loss')\n", promotion_type);
+        return 0;
+    }
+    
+    /* First, get the game to verify it exists and is in final state */
+    const char *game_query = 
+        "SELECT id, state, team1_score, team2_score, set_id "
+        "FROM games WHERE id = $1";
+    
+    char game_id_str[16];
+    sprintf(game_id_str, "%d", game_id);
+    const char *game_params[1] = { game_id_str };
+    
+    PGresult *game_result = PQexecParams(conn, game_query, 1, NULL, game_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(game_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game query failed: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        return 0;
+    }
+    
+    int game_rows = PQntuples(game_result);
+    if (game_rows == 0) {
+        printf("No game found with ID %d\n", game_id);
+        PQclear(game_result);
+        return 0;
+    }
+    
+    const char *state = PQgetvalue(game_result, 0, 1);
+    if (strcmp(state, "final") != 0) {
+        printf("Game #%d is not in 'final' state (current state: %s)\n", game_id, state);
+        printf("Only finalized games can be used for promotion\n");
+        PQclear(game_result);
+        return 0;
+    }
+    
+    int team1_score = atoi(PQgetvalue(game_result, 0, 2));
+    int team2_score = atoi(PQgetvalue(game_result, 0, 3));
+    int set_id = atoi(PQgetvalue(game_result, 0, 4));
+    
+    /* Determine which team won */
+    int winning_team = 0;
+    if (team1_score > team2_score) {
+        winning_team = 1;
+    } else if (team2_score > team1_score) {
+        winning_team = 2;
+    } else {
+        printf("Game #%d ended in a tie (%d-%d). Cannot determine promotion.\n", 
+               game_id, team1_score, team2_score);
+        PQclear(game_result);
+        return 0;
+    }
+    
+    /* Determine the team to promote based on promotion type */
+    int team_to_promote;
+    const char *type_str;
+    
+    if (strcmp(promotion_type, "win") == 0) {
+        team_to_promote = winning_team;
+        type_str = "win_promoted";
+        printf("Promoting winning team %d (score %d-%d)\n", 
+               winning_team, team1_score, team2_score);
+    } else {
+        team_to_promote = (winning_team == 1) ? 2 : 1;
+        type_str = "loss_promoted";
+        printf("Promoting losing team %d (score %d-%d)\n", 
+               team_to_promote, team1_score, team2_score);
+    }
+    
+    /* Get players from the selected team */
+    const char *players_query =
+        "SELECT gp.user_id, u.username "
+        "FROM game_players gp "
+        "JOIN users u ON gp.user_id = u.id "
+        "WHERE gp.game_id = $1 AND gp.team = $2";
+    
+    char team_str[2];
+    sprintf(team_str, "%d", team_to_promote);
+    const char *players_params[2] = { game_id_str, team_str };
+    
+    PGresult *players_result = PQexecParams(conn, players_query, 2, NULL, players_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(players_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Players query failed: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        PQclear(players_result);
+        return 0;
+    }
+    
+    int player_rows = PQntuples(players_result);
+    if (player_rows == 0) {
+        printf("No players found for team %d in game #%d\n", team_to_promote, game_id);
+        PQclear(game_result);
+        PQclear(players_result);
+        return 0;
+    }
+    
+    /* Get the current queue position from the game set */
+    const char *queue_query = 
+        "SELECT current_queue_position FROM game_sets WHERE id = $1";
+    
+    char set_id_str[16];
+    sprintf(set_id_str, "%d", set_id);
+    const char *queue_params[1] = { set_id_str };
+    
+    PGresult *queue_result = PQexecParams(conn, queue_query, 1, NULL, queue_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(queue_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Queue position query failed: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        PQclear(players_result);
+        PQclear(queue_result);
+        return 0;
+    }
+    
+    int queue_position = atoi(PQgetvalue(queue_result, 0, 0));
+    
+    /* Create new checkins for each player in the next-up queue */
+    int successful_promotions = 0;
+    
+    printf("Promoting %d players to positions starting at %d:\n", player_rows, queue_position);
+    
+    for (int i = 0; i < player_rows; i++) {
+        int user_id = atoi(PQgetvalue(players_result, i, 0));
+        const char *username = PQgetvalue(players_result, i, 1);
+        
+        /* Insert new checkin */
+        const char *insert_query = 
+            "INSERT INTO checkins "
+            "(user_id, game_set_id, club_index, check_in_time, check_in_date, "
+            "is_active, queue_position, type, team) "
+            "VALUES ($1, $2, "
+            "(SELECT club_index FROM games WHERE id = $3), "
+            "NOW(), CURRENT_DATE, true, $4, $5, $6) "
+            "RETURNING id";
+        
+        char user_id_str[16];
+        char position_str[16];
+        
+        sprintf(user_id_str, "%d", user_id);
+        sprintf(position_str, "%d", queue_position + i);
+        
+        const char *insert_params[6] = { 
+            user_id_str, set_id_str, game_id_str, 
+            position_str, type_str, team_str 
+        };
+        
+        PGresult *insert_result = PQexecParams(conn, insert_query, 6, NULL, insert_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(insert_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Failed to create checkin for %s: %s\n", 
+                   username, PQerrorMessage(conn));
+            PQclear(insert_result);
+            continue;
+        }
+        
+        int checkin_id = atoi(PQgetvalue(insert_result, 0, 0));
+        printf("  %s promoted to position %d (checkin ID: %d)\n", 
+               username, queue_position + i, checkin_id);
+        
+        successful_promotions++;
+        PQclear(insert_result);
+    }
+    
+    /* If we promoted any players, update the game set's queue position */
+    if (successful_promotions > 0) {
+        int new_queue_position = queue_position + successful_promotions;
+        
+        const char *update_query = 
+            "UPDATE game_sets SET current_queue_position = $1 "
+            "WHERE id = $2 RETURNING id";
+        
+        char new_pos_str[16];
+        sprintf(new_pos_str, "%d", new_queue_position);
+        
+        const char *update_params[2] = { new_pos_str, set_id_str };
+        
+        PGresult *update_result = PQexecParams(conn, update_query, 2, NULL, update_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(update_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Failed to update game set queue position: %s\n", 
+                   PQerrorMessage(conn));
+        } else {
+            printf("Updated game set #%d queue position to %d\n", 
+                   set_id, new_queue_position);
+        }
+        
+        PQclear(update_result);
+    }
+    
+    PQclear(game_result);
+    PQclear(players_result);
+    PQclear(queue_result);
+    
+    return successful_promotions;
+}
+
 /* Handle player checkout */
 int checkout_player(PGconn *conn, int queue_position) {
     // First get information about the player's position
@@ -784,6 +984,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  active-game-set - Show active game set details\n");
         printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
         printf("  player <username> - Show detailed information about a player\n");
+        printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -864,6 +1065,30 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         }
         
         get_player_info(conn, argv[2]);
+    }
+    else if (strcmp(argv[1], "promote") == 0) {
+        if (argc < 4) {
+            printf("Usage: %s promote <game_id> <win|loss>\n", argv[0]);
+            return;
+        }
+        
+        int game_id = atoi(argv[2]);
+        if (game_id <= 0) {
+            printf("Invalid game ID: %s\n", argv[2]);
+            return;
+        }
+        
+        if (strcmp(argv[3], "win") != 0 && strcmp(argv[3], "loss") != 0) {
+            printf("Invalid promotion type: %s (must be 'win' or 'loss')\n", argv[3]);
+            return;
+        }
+        
+        int promoted = promote_game_players(conn, game_id, argv[3]);
+        if (promoted > 0) {
+            printf("Successfully promoted %d players\n", promoted);
+        } else {
+            printf("No players were promoted\n");
+        }
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
