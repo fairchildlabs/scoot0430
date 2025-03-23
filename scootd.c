@@ -781,8 +781,9 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     PQclear(res);
     
     // Get available players (not assigned to a game)
+    // Include team information to respect previous assignments
     sprintf(query, 
-            "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type "
+            "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type, c.team "
             "FROM checkins c "
             "JOIN users u ON c.user_id = u.id "
             "WHERE c.is_active = true "
@@ -957,14 +958,18 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         PQclear(res);
         
         // Get available players (not assigned to a game)
+        // First get players with team assignments (from previous promotion)
+        // then fill the rest in position order
         sprintf(query, 
-                "SELECT c.id, c.user_id, u.username, c.queue_position "
+                "SELECT c.id, c.user_id, u.username, c.queue_position, c.team "
                 "FROM checkins c "
                 "JOIN users u ON c.user_id = u.id "
                 "WHERE c.is_active = true "
                 "AND c.game_id IS NULL "
-                "ORDER BY c.queue_position ASC "
-                "LIMIT 8");
+                "AND c.queue_position >= %d "
+                "ORDER BY c.team NULLS LAST, c.queue_position ASC "
+                "LIMIT 8",
+                current_position);
                 
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) < 8) {
@@ -983,81 +988,69 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             return;
         }
         
-        // Create team 1 (positions 1-4)
-        for (int i = 0; i < 4; i++) {
-            int checkin_id = atoi(PQgetvalue(res, i, 0));
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
+        // Sort players based on their team assignment from previous games
+        typedef struct {
+            int checkin_id;
+            int user_id;
+            const char *username;
+            int queue_position;
+            int team;
+        } Player;
+        
+        Player players[8];
+        int home_team_count = 0;
+        int away_team_count = 0;
+        
+        // First, collect all players and identify those with pre-assigned teams
+        for (int i = 0; i < 8; i++) {
+            players[i].checkin_id = atoi(PQgetvalue(res, i, 0));
+            players[i].user_id = atoi(PQgetvalue(res, i, 1));
+            players[i].username = PQgetvalue(res, i, 2);
+            players[i].queue_position = atoi(PQgetvalue(res, i, 3));
             
-            // Assign player to game, team 1
-            char update_query[256];
-            sprintf(update_query, 
-                    "UPDATE checkins SET game_id = %d, team = 1 "
-                    "WHERE id = %d", 
-                    game_id, checkin_id);
-                    
-            PGresult *update_res = PQexec(conn, update_query);
-            if (PQresultStatus(update_res) != PGRES_COMMAND_OK) {
-                fprintf(stderr, "Error assigning player %s to game: %s", username, PQerrorMessage(conn));
-                PQclear(update_res);
-                PQclear(res);
-                PQexec(conn, "ROLLBACK");
+            // Check if team is assigned (not NULL) from previous game
+            if (PQgetisnull(res, i, 4) == 0) {
+                players[i].team = atoi(PQgetvalue(res, i, 4));
                 
-                if (strcmp(format, "json") == 0) {
-                    printf("{\n");
-                    printf("  \"status\": \"ERROR\",\n");
-                    printf("  \"message\": \"Database error: Could not assign player to game\"\n");
-                    printf("}\n");
-                } else {
-                    printf("Error: Could not assign player to game\n");
+                // Count players per team
+                if (players[i].team == 1) {
+                    home_team_count++;
+                } else if (players[i].team == 2) {
+                    away_team_count++;
                 }
-                return;
+            } else {
+                players[i].team = 0; // No team assignment yet
             }
-            PQclear(update_res);
-            
-            // Insert into game_players
-            char insert_query[256];
-            sprintf(insert_query, 
-                    "INSERT INTO game_players (game_id, user_id, team, relative_position) "
-                    "VALUES (%d, %d, 1, %d)",
-                    game_id, user_id, i+1);
-                    
-            PGresult *insert_res = PQexec(conn, insert_query);
-            if (PQresultStatus(insert_res) != PGRES_COMMAND_OK) {
-                fprintf(stderr, "Error creating game_player record: %s", PQerrorMessage(conn));
-                PQclear(insert_res);
-                PQclear(res);
-                PQexec(conn, "ROLLBACK");
-                
-                if (strcmp(format, "json") == 0) {
-                    printf("{\n");
-                    printf("  \"status\": \"ERROR\",\n");
-                    printf("  \"message\": \"Database error: Could not create game_player record\"\n");
-                    printf("}\n");
-                } else {
-                    printf("Error: Could not create game_player record\n");
-                }
-                return;
-            }
-            PQclear(insert_res);
         }
         
-        // Create team 2 (positions 5-8)
-        for (int i = 4; i < 8; i++) {
-            int checkin_id = atoi(PQgetvalue(res, i, 0));
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
+        // Assign teams to players respecting previous assignments
+        for (int i = 0; i < 8; i++) {
+            int team_to_assign;
             
-            // Assign player to game, team 2
+            if (players[i].team != 0) {
+                // Keep existing team assignment
+                team_to_assign = players[i].team;
+            } else {
+                // Assign to team with fewer players
+                if (home_team_count < 4) {
+                    team_to_assign = 1;
+                    home_team_count++;
+                } else {
+                    team_to_assign = 2;
+                    away_team_count++;
+                }
+            }
+            
+            // Assign player to game with the determined team
             char update_query[256];
             sprintf(update_query, 
-                    "UPDATE checkins SET game_id = %d, team = 2 "
+                    "UPDATE checkins SET game_id = %d, team = %d "
                     "WHERE id = %d", 
-                    game_id, checkin_id);
+                    game_id, team_to_assign, players[i].checkin_id);
                     
             PGresult *update_res = PQexec(conn, update_query);
             if (PQresultStatus(update_res) != PGRES_COMMAND_OK) {
-                fprintf(stderr, "Error assigning player %s to game: %s", username, PQerrorMessage(conn));
+                fprintf(stderr, "Error assigning player %s to game: %s", players[i].username, PQerrorMessage(conn));
                 PQclear(update_res);
                 PQclear(res);
                 PQexec(conn, "ROLLBACK");
@@ -1074,12 +1067,20 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             }
             PQclear(update_res);
             
+            // Calculate relative position within team (1-4)
+            int relative_pos = 1;
+            for (int j = 0; j < i; j++) {
+                if (players[j].team == team_to_assign) {
+                    relative_pos++;
+                }
+            }
+            
             // Insert into game_players
             char insert_query[256];
             sprintf(insert_query, 
                     "INSERT INTO game_players (game_id, user_id, team, relative_position) "
-                    "VALUES (%d, %d, 2, %d)",
-                    game_id, user_id, i-3);  // Use relative position within team (1-4)
+                    "VALUES (%d, %d, %d, %d)",
+                    game_id, players[i].user_id, team_to_assign, relative_pos);
                     
             PGresult *insert_res = PQexec(conn, insert_query);
             if (PQresultStatus(insert_res) != PGRES_COMMAND_OK) {
@@ -2038,12 +2039,13 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             // Calculate new queue position based on relative position
             int new_position = current_queue_position + relative_position - 1;
             
+            // Store the team for promoted players so they can play on the same team next time
             char insert_query[512];
             sprintf(insert_query, 
-                    "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
-                    "VALUES (%d, %d, 34, %d, true, '%s', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
+                    "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, team, check_in_time, check_in_date) "
+                    "VALUES (%d, %d, 34, %d, true, '%s', %d, NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                     "RETURNING id",
-                    user_id, set_id, new_position, promotion_type);
+                    user_id, set_id, new_position, promotion_type, team_to_promote);
             
             PGresult *insert_res = PQexec(conn, insert_query);
             if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
