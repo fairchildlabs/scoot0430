@@ -1527,8 +1527,12 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             printf("    }%s\n", (i < available_players - 1) ? "," : "");
         }
         
-        printf("  ]\n");
-        printf("}\n");
+        if (bCreate) {
+            printf("  ]");
+        } else {
+            // In propose-game mode (not bCreate), we need to leave space to add game_id and stat
+            printf("  ]");
+        }
     } else {
         printf("Game proposal for game set #%d on court '%s':\n", game_set_id, court);
         printf("------------------------------------------\n");
@@ -1840,7 +1844,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     // Update the JSON output for propose-game to include the stat and game_id fields
     else if (strcmp(format, "json") == 0) {
         // After printing the "next_up" array, add game_id and stat fields before closing the main JSON object
-        printf("  ],\n");
+        printf(",\n");
         printf("  \"game_id\": 0,\n");
         printf("  \"stat\": %d\n", STAT_SUCCESS);
         printf("}\n");
