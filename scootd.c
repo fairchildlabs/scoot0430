@@ -1812,10 +1812,10 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                    max_consecutive_games);
         }
         
-        // Mark all players in the game as inactive in checkins
+        // Mark all players in the game as inactive in checkins and reset game_id
         sprintf(query, 
                 "UPDATE checkins c "
-                "SET is_active = false "
+                "SET is_active = false, game_id = NULL "
                 "FROM game_players gp "
                 "WHERE gp.game_id = %d "
                 "AND gp.user_id = c.user_id "
