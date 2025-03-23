@@ -291,7 +291,7 @@ export default function HomePage() {
                     <div key={p.id} className="p-2 rounded-md text-sm bg-secondary/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
-                          <span className="font-mono text-lg">#{p.team === 1 ? (p.queuePosition <= 8 ? p.queuePosition : (p.queuePosition - 8) % 8 || 8) : p.queuePosition}</span>
+                          <span className="font-mono text-lg">#{p.queuePosition}</span>
                           <span>{p.username}</span>
                         </div>
                         {isOG(p.birthYear) && (
@@ -335,10 +335,7 @@ export default function HomePage() {
                     <div key={p.id} className="p-2 rounded-md text-sm bg-white/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
-                          <span className="font-mono text-lg">#{p.team === 2 ? 
-                             ((p.queuePosition <= 8) ? p.queuePosition : 
-                              ((p.queuePosition - 8) % 8 || 8) + 4) : 
-                             p.queuePosition}</span>
+                          <span className="font-mono text-lg">#{p.queuePosition}</span>
                           <span>{p.username}</span>
                         </div>
                         {isOG(p.birthYear) && (
@@ -451,16 +448,7 @@ export default function HomePage() {
                         {nextUpPlayers.map((player: any) => (
                           <div key={player.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
                             <div className="flex items-center gap-4">
-                              <span className="font-mono text-lg">#{
-                                // Next-up players position calculation
-                                player.team === 1 ? 
-                                  ((player.queuePosition <= 8) ? player.queuePosition : 
-                                   ((player.queuePosition - 8) % 8 || 8)) : 
-                                player.team === 2 ?
-                                  ((player.queuePosition <= 8) ? player.queuePosition : 
-                                   ((player.queuePosition - 8) % 8 || 8) + 4) :
-                                player.queuePosition
-                              }</span>
+                              <span className="font-mono text-lg">#{player.queuePosition}</span>
                               <span>
                                 {player.username}
                                 {player.type === 'win_promoted' && (
