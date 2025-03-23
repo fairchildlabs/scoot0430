@@ -721,7 +721,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     
     // Get game set details
     sprintf(query, 
-            "SELECT id, players_per_team, current_queue_position FROM game_sets WHERE id = %d",
+            "SELECT id, current_queue_position FROM game_sets WHERE id = %d",
             game_set_id);
     
     res = PQexec(conn, query);
@@ -739,8 +739,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         return;
     }
     
-    int players_per_team = atoi(PQgetvalue(res, 0, 1));
-    int current_position = atoi(PQgetvalue(res, 0, 2));
+    int current_position = atoi(PQgetvalue(res, 0, 1));
     PQclear(res);
     
     // Check if there are active games on this court for this game set
