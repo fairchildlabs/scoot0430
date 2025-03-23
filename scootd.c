@@ -2068,20 +2068,51 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             if (autoup_count > 0) {
                 printf("Auto-checking in %d players with autoup=true:\n", autoup_count);
                 
-                // Start inserting autoup players at the correct queue_next_up
-                // which is current_queue_position + PLAYERS_PER_TEAM
-                int current_next_up = current_queue_position + PLAYERS_PER_TEAM;
+                // Use queue_next_up from game_sets for autoup players
+                // This ensures we place them after all existing players
+                // We first need to refresh the queue_next_up value to be accurate
+                sprintf(query, 
+                        "SELECT queue_next_up FROM game_sets WHERE id = %d",
+                        set_id);
+                
+                PGresult *next_up_res = PQexec(conn, query);
+                if (PQresultStatus(next_up_res) != PGRES_TUPLES_OK || PQntuples(next_up_res) == 0) {
+                    fprintf(stderr, "Error getting updated queue_next_up: %s", PQerrorMessage(conn));
+                    PQclear(next_up_res);
+                } else {
+                    queue_next_up = atoi(PQgetvalue(next_up_res, 0, 0));
+                    printf("Current queue_next_up position: %d\n", queue_next_up);
+                }
+                PQclear(next_up_res);
                 
                 for (int i = 0; i < autoup_count; i++) {
                     int user_id = atoi(PQgetvalue(res, i, 0));
                     const char *username = PQgetvalue(res, i, 1);
+                    
+                    // First, increment queue_next_up for each autoup player
+                    sprintf(query, 
+                            "UPDATE game_sets SET queue_next_up = queue_next_up + 1 "
+                            "WHERE id = %d "
+                            "RETURNING queue_next_up",
+                            set_id);
+                            
+                    PGresult *update_next_up = PQexec(conn, query);
+                    if (PQresultStatus(update_next_up) != PGRES_TUPLES_OK) {
+                        fprintf(stderr, "Error updating queue_next_up: %s", PQerrorMessage(conn));
+                        PQclear(update_next_up);
+                        continue;
+                    }
+                    
+                    // Get the updated queue_next_up to use for this player
+                    int current_position = atoi(PQgetvalue(update_next_up, 0, 0)) - 1;
+                    PQclear(update_next_up);
                     
                     char insert_query[512];
                     sprintf(insert_query, 
                             "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
                             "VALUES (%d, %d, 34, %d, true, 'autoup', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                             "RETURNING id",
-                            user_id, set_id, current_next_up + i);
+                            user_id, set_id, current_position);
                     
                     PGresult *insert_res = PQexec(conn, insert_query);
                     if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
@@ -2091,7 +2122,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                         continue;
                     }
                     
-                    printf("- %s auto-checked in at position %d\n", username, current_next_up + i);
+                    printf("- %s auto-checked in at position %d\n", username, current_position);
                     
                     PQclear(insert_res);
                 }
