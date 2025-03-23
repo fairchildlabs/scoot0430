@@ -42,7 +42,7 @@ export const gameSets = pgTable("game_sets", {
   createdBy: integer("created_by").notNull(),
   playersPerTeam: integer("players_per_team").notNull().default(4),
   gym: text("gym").notNull().default('fonde'),
-  maxConsecutiveTeamWins: integer("max_consecutive_team_wins").notNull().default(2),
+  maxConsecutiveGames: integer("max_consecutive_games").notNull().default(2),
   timeLimit: integer("time_limit").notNull().default(15),
   winScore: integer("win_score").notNull().default(21),
   pointSystem: text("point_system").notNull().default('2s and 3s'),
@@ -110,7 +110,7 @@ export const insertUserSchema = userBaseSchema.extend({
 export const insertGameSetSchema = createInsertSchema(gameSets, {
   playersPerTeam: z.number().min(1).max(5),
   gym: z.enum(['fonde']),
-  maxConsecutiveTeamWins: z.number().min(1),
+  maxConsecutiveGames: z.number().min(1),
   timeLimit: z.number().min(5).max(60),
   winScore: z.number().min(1),
   pointSystem: z.enum(['1s only', '2s only', '2s and 3s']),
