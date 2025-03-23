@@ -1903,10 +1903,10 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
     
     PQclear(res);
     
-    // Update game with scores, set end_time, and mark as completed
+    // Update game with scores and mark as completed
     sprintf(query, 
             "UPDATE games "
-            "SET team1_score = %d, team2_score = %d, state = 'completed', end_time = NOW() "
+            "SET team1_score = %d, team2_score = %d, state = 'completed' "
             "WHERE id = %d "
             "RETURNING id",
             home_score, away_score, game_id);
@@ -2074,12 +2074,10 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         for (int i = 0; i < player_count; i++) {
             int user_id = atoi(PQgetvalue(res, i, 0));
             const char *username = PQgetvalue(res, i, 1);
-            // We don't need relative_position anymore since we're using the index
-            // to guarantee unique consecutive positions
+            int relative_position = atoi(PQgetvalue(res, i, 2));
             
-            // Calculate new queue position based on loop index to ensure unique positions
-            // This guarantees consecutive positions for all promoted players
-            int new_position = current_queue_position + i;
+            // Calculate new queue position based on relative position
+            int new_position = current_queue_position + relative_position - 1;
             
             // Store the team for promoted players so they can play on the same team next time
             char insert_query[512];
@@ -2227,7 +2225,19 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
     PQclear(res);
 }
 
-
+/**
+ * Compare two teams to see if they are the same
+ * Returns true if all players are the same on both teams
+ */
+// Legacy version that uses the more specific team_compare_specific function
+bool team_compare(PGconn *conn, int game_id1, int game_id2) {
+    // Compare both teams (team 1 to team 1 and team 2 to team 2)
+    bool same_team1 = team_compare_specific(conn, game_id1, 1, game_id2, 1);
+    bool same_team2 = team_compare_specific(conn, game_id1, 2, game_id2, 2);
+    
+    // Teams are the same if both team 1 and team 2 are the same
+    return same_team1 && same_team2;
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
