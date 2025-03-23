@@ -1431,10 +1431,10 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get recent completed games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.updated_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.end_time "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'completed' "
-                "ORDER BY g.updated_at DESC "
+                "ORDER BY g.end_time DESC "
                 "LIMIT 5",
                 game_set_id);
         
