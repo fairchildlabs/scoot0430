@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1704,9 +1705,10 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     struct tm tm_start = {0}, tm_end = {0};
                     time_t t_start, t_end;
                     
-                    // Parse timestamps
-                    if (strptime(start_time, "%Y-%m-%d %H:%M:%S", &tm_start) != NULL &&
-                        strptime(end_time, "%Y-%m-%d %H:%M:%S", &tm_end) != NULL) {
+                    // Parse timestamps - strptime returns char* so we compare to NULL
+                    char *start_res = strptime(start_time, "%Y-%m-%d %H:%M:%S", &tm_start);
+                    char *end_res = strptime(end_time, "%Y-%m-%d %H:%M:%S", &tm_end);
+                    if (start_res != NULL && end_res != NULL) {
                         t_start = mktime(&tm_start);
                         t_end = mktime(&tm_end);
                         int diff_seconds = (int)difftime(t_end, t_start);
