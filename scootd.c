@@ -1609,8 +1609,6 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     
     // Create the game if requested
     int game_id = 0;
-    // Default status code
-    int stat_code = STAT_SUCCESS;
     
     if (bCreate) {
         // Begin a transaction
@@ -1841,14 +1839,11 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     } 
     // Update the JSON output for propose-game to include the stat and game_id fields
     else if (strcmp(format, "json") == 0) {
-        // Find the second-to-last closing brace and add the new fields before it
-        char *last_json_line = strdup("]");  // This is the last line of the existing JSON
-        
+        // After printing the "next_up" array, add game_id and stat fields before closing the main JSON object
+        printf("  ],\n");
         printf("  \"game_id\": 0,\n");
         printf("  \"stat\": %d\n", STAT_SUCCESS);
-        printf("%s\n", last_json_line);
-        
-        free(last_json_line);
+        printf("}\n");
     }
     
     PQclear(players_result);
