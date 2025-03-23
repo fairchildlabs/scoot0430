@@ -264,9 +264,11 @@ const NewGamePage = () => {
   let awayPlayers: any[] = [];
   
   // Calculate base positions for current game
-  const gameNumber = Math.floor((currentQueuePos - 1) / (playersPerTeam * 2)) + 1;
-  const homeStartPos = (gameNumber - 1) * (playersPerTeam * 2) + 1; // 1, 9, 17, etc.
-  const awayStartPos = homeStartPos + playersPerTeam; // 5, 13, 21, etc.
+  // For display purposes in the new game screen, always show positions 1-4 and 5-8
+  // regardless of the actual queue positions in the database
+  const gameNumber = 1; // Always show game 1 positions on creation screen
+  const homeStartPos = 1; // Always start at 1 for home
+  const awayStartPos = 5; // Always start at 5 for away
   
   console.log('Position calculation:', {
     gameNumber,
