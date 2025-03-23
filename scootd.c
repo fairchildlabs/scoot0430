@@ -1636,15 +1636,46 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         }
         PQclear(tx_result);
 
+        // First get the club_index from the game_set
+        const char *get_club_index_query = "SELECT club_index FROM checkins WHERE game_set_id = $1 LIMIT 1";
+        
+        const char *club_index_params[1] = { set_id_str };
+        PGresult *club_index_result = PQexecParams(conn, get_club_index_query, 1, NULL, club_index_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(club_index_result) != PGRES_TUPLES_OK || PQntuples(club_index_result) == 0) {
+            fprintf(stderr, "Failed to get club_index: %s\n", PQerrorMessage(conn));
+            PQclear(club_index_result);
+            
+            // Roll back the transaction
+            PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+            PQclear(rollback_result);
+            
+            PQclear(players_result);
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Failed to get club_index\",\n");
+                printf("  \"game_id\": -1,\n");
+                printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                printf("}\n");
+            } else {
+                printf("Error: Failed to get club_index\n");
+            }
+            return;
+        }
+        
+        const char *club_index_str = PQgetvalue(club_index_result, 0, 0);
+        
         // Create the game
         const char *create_game_query = 
             "INSERT INTO games (set_id, start_time, court, state, club_index) "
-            "VALUES ($1, NOW(), $2, 'pending', "
-            "(SELECT club_index FROM game_sets WHERE id = $1)) "
+            "VALUES ($1, NOW(), $2, 'pending', $3) "
             "RETURNING id";
+            
+        const char *game_params[3] = { set_id_str, court, club_index_str };
         
-        const char *game_params[2] = { set_id_str, court };
-        PGresult *game_create_result = PQexecParams(conn, create_game_query, 2, NULL, game_params, NULL, NULL, 0);
+        PGresult *game_create_result = PQexecParams(conn, create_game_query, 3, NULL, game_params, NULL, NULL, 0);
         
         if (PQresultStatus(game_create_result) != PGRES_TUPLES_OK) {
             fprintf(stderr, "Game creation failed: %s\n", PQerrorMessage(conn));
