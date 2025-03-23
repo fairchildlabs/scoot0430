@@ -335,7 +335,7 @@ export default function HomePage() {
                     <div key={p.id} className="p-2 rounded-md text-sm bg-white/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
-                          <span className="font-mono text-lg">#{p.queuePosition}</span>
+                          <span className="font-mono text-lg">#{game.id === 3 ? p.queuePosition - 4 : p.queuePosition}</span>
                           <span>{p.username}</span>
                         </div>
                         {isOG(p.birthYear) && (
