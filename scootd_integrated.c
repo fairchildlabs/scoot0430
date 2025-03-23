@@ -374,7 +374,7 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
             
             PGresult *recent_res = PQexecParams(conn, 
                 "SELECT g.id, g.court, g.team1_score, g.team2_score, g.state, gp.team, "
-                "g.start_time, g.updated_at "
+                "g.start_time "
                 "FROM games g "
                 "JOIN game_players gp ON g.id = gp.game_id "
                 "WHERE gp.user_id = $1 "
