@@ -552,88 +552,6 @@ int get_active_game_set_id(PGconn *conn) {
     return game_set_id;
 }
 
-/* Function to get next-up players for a given game set */
-void get_next_up_players(PGconn *conn, int game_set_id, const char *format) {
-    const char *query = 
-        "SELECT c.queue_position, u.username, u.id, c.type, c.team "
-        "FROM checkins c "
-        "JOIN users u ON c.user_id = u.id "
-        "WHERE c.is_active = true AND c.game_set_id = $1 AND c.game_id IS NULL "
-        "ORDER BY c.queue_position";
-    
-    char set_id_str[16];
-    sprintf(set_id_str, "%d", game_set_id);
-    const char *params[1] = { set_id_str };
-    
-    PGresult *result = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
-    
-    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
-        fprintf(stderr, "Next-up players query failed: %s\n", PQerrorMessage(conn));
-        PQclear(result);
-        return;
-    }
-    
-    int rows = PQntuples(result);
-    
-    if (format && strcmp(format, "json") == 0) {
-        printf("{\n");
-        printf("  \"game_set_id\": %d,\n", game_set_id);
-        printf("  \"next_up_players\": [\n");
-        
-        for (int i = 0; i < rows; i++) {
-            int position = atoi(PQgetvalue(result, i, 0));
-            const char *username = PQgetvalue(result, i, 1);
-            int userId = atoi(PQgetvalue(result, i, 2));
-            const char *type = PQgetvalue(result, i, 3);
-            
-            // Handle team which might be NULL
-            const char *team_str = "null";
-            if (!PQgetisnull(result, i, 4)) {
-                team_str = PQgetvalue(result, i, 4);
-            }
-            
-            printf("    {\n");
-            printf("      \"position\": %d,\n", position);
-            printf("      \"username\": \"%s\",\n", username);
-            printf("      \"user_id\": %d,\n", userId);
-            printf("      \"type\": \"%s\",\n", type);
-            printf("      \"team\": %s\n", team_str);
-            printf("    }%s\n", (i < rows - 1) ? "," : "");
-        }
-        
-        printf("  ],\n");
-        printf("  \"count\": %d\n", rows);
-        printf("}\n");
-    } else {
-        printf("Next-up players for game set #%d: %d found\n", game_set_id, rows);
-        printf("------------------------------------------\n");
-        printf("%-8s | %-20s | %-10s | %-15s | %-5s\n", 
-               "Position", "Username", "User ID", "Type", "Team");
-        printf("------------------------------------------\n");
-        
-        for (int i = 0; i < rows; i++) {
-            int position = atoi(PQgetvalue(result, i, 0));
-            const char *username = PQgetvalue(result, i, 1);
-            int userId = atoi(PQgetvalue(result, i, 2));
-            const char *type = PQgetvalue(result, i, 3);
-            
-            const char *team_str = "none";
-            if (!PQgetisnull(result, i, 4)) {
-                team_str = PQgetvalue(result, i, 4);
-            }
-            
-            printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
-                   position, username, userId, type, team_str);
-        }
-        
-        if (rows == 0) {
-            printf("No next-up players found for this game set.\n");
-        }
-    }
-    
-    PQclear(result);
-}
-
 /* Get detailed player information */
 void get_player_info(PGconn *conn, const char *username, const char *format) {
     /* First get user details */
@@ -1237,7 +1155,6 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
         printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
-        printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
