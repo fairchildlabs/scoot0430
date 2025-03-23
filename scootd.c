@@ -2493,7 +2493,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  new-game <game_set_id> <court> [format] - Create a new game (format: text|json, default: text)\n");
         printf("  end-game <game_id> <home_score> <away_score> - End a game and record the final scores\n");
-        printf("  game-set-status <game_set_id> [format] - Show detailed status of a game set (format: text|json, default: text)\n");
+        printf("  game-set-status <game_set_id> [format] - Show detailed status of a game set (format: text|json|--json, default: text)\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -2784,7 +2784,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
     else if (strcmp(argv[1], "game-set-status") == 0) {
         if (argc < 3) {
             printf("Usage: %s game-set-status <game_set_id> [format]\n", argv[0]);
-            printf("       format: text|json (default: text)\n");
+            printf("       format: text|json|--json (default: text)\n");
             return;
         }
         
@@ -2797,7 +2797,10 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         const char *format = "text";
         // If format is provided
         if (argc >= 4) {
-            if (strcmp(argv[3], "json") == 0 || strcmp(argv[3], "text") == 0) {
+            // Check for --json flag
+            if (strcmp(argv[3], "--json") == 0) {
+                format = "json";
+            } else if (strcmp(argv[3], "json") == 0 || strcmp(argv[3], "text") == 0) {
                 format = argv[3];
             } else {
                 printf("Error: Invalid format '%s'. Valid formats are 'text' or 'json'.\n", argv[3]);
