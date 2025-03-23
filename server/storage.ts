@@ -1020,8 +1020,25 @@ export class DatabaseStorage implements IStorage {
       return existingCheckins[0];
     }
 
-    // Create new checkin with next queue position
-    console.log(`Creating new checkin for user ${userId}`);
+    // Calculate the next available queue position for this checkin
+    // Find the highest position already in use (excluding this user)
+    const [highestPosition] = await db
+      .select({ maxPosition: sql`MAX(${checkins.queuePosition})` })
+      .from(checkins)
+      .where(
+        and(
+          eq(checkins.gameSetId, activeGameSet.id),
+          eq(checkins.isActive, true)
+        )
+      );
+    
+    // If we're checking in the first player, use position 1
+    // Otherwise, use the highest used position + 1
+    const nextPosition = highestPosition?.maxPosition 
+      ? (highestPosition.maxPosition as number) + 1 
+      : 1;
+    
+    console.log(`Creating new checkin for user ${userId} with position ${nextPosition}`);
     const [checkin] = await db
       .insert(checkins)
       .values({
@@ -1031,20 +1048,20 @@ export class DatabaseStorage implements IStorage {
         isActive: true,
         checkInDate: today,
         gameSetId: activeGameSet.id,
-        queuePosition: activeGameSet.currentQueuePosition,
+        queuePosition: nextPosition,
         type: 'manual',
         gameId: null,
         team: null
       })
       .returning();
 
-    // Update the game set's current queue position and queueNextUp
-    // queueNextUp should track the tail of the queue (highest position used)
+    // Update the game set's queueNextUp to track the tail position
+    // For fast reset, we want to make sure currentQueuePosition starts at 1
     await db
       .update(gameSets)
       .set({ 
-        currentQueuePosition: activeGameSet.currentQueuePosition + 1,
-        queueNextUp: activeGameSet.currentQueuePosition + 1  // This is now the tail position
+        currentQueuePosition: 1, // FAST RESET: Always reset to 1 for new games
+        queueNextUp: nextPosition + 1  // This tracks the next available position
       })
       .where(eq(gameSets.id, activeGameSet.id));
 
