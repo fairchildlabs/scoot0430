@@ -1849,8 +1849,8 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             
             char insert_query[512];
             sprintf(insert_query, 
-                    "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type) "
-                    "VALUES (%d, %d, 34, %d, true, '%s') "
+                    "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
+                    "VALUES (%d, %d, 34, %d, true, '%s', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                     "RETURNING id",
                     user_id, set_id, new_position, promotion_type);
             
@@ -1898,8 +1898,8 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     
                     char insert_query[512];
                     sprintf(insert_query, 
-                            "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type) "
-                            "VALUES (%d, %d, 34, %d, true, 'autoup') "
+                            "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
+                            "VALUES (%d, %d, 34, %d, true, 'autoup', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                             "RETURNING id",
                             user_id, set_id, current_next_up);
                     
