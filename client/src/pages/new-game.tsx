@@ -262,6 +262,18 @@ const NewGamePage = () => {
   // Initialize team arrays
   let homePlayers: any[] = [];
   let awayPlayers: any[] = [];
+  
+  // Calculate base positions for current game
+  const gameNumber = Math.floor((currentQueuePos - 1) / (playersPerTeam * 2)) + 1;
+  const homeStartPos = (gameNumber - 1) * (playersPerTeam * 2) + 1; // 1, 9, 17, etc.
+  const awayStartPos = homeStartPos + playersPerTeam; // 5, 13, 21, etc.
+  
+  console.log('Position calculation:', {
+    gameNumber,
+    homeStartPos,
+    awayStartPos,
+    currentQueuePos
+  });
 
   // First, assign promoted players to their previous teams
   eligiblePlayers.forEach(player => {
@@ -270,9 +282,28 @@ const NewGamePage = () => {
       player.type.endsWith('-A') : player.team === 2;
 
     if (isAwayTeam && awayPlayers.length < playersPerTeam) {
-      awayPlayers.push(player);
+      // For away team, adjust queue position to use a consistent range (5-8, 13-16, etc.)
+      const homeBaseIndex = homePlayers.length;
+      const awayBaseIndex = awayPlayers.length;
+      const awayPos = awayStartPos + awayBaseIndex;
+      
+      // Create a copy of player with adjusted queue position
+      const playerWithPos = {
+        ...player,
+        displayPosition: awayPos // Add displayPosition for UI purposes
+      };
+      awayPlayers.push(playerWithPos);
     } else if (!isAwayTeam && homePlayers.length < playersPerTeam) {
-      homePlayers.push(player);
+      // For home team, adjust queue position to use a consistent range (1-4, 9-12, etc.)
+      const homeBaseIndex = homePlayers.length;
+      const homePos = homeStartPos + homeBaseIndex;
+      
+      // Create a copy of player with adjusted queue position
+      const playerWithPos = {
+        ...player,
+        displayPosition: homePos // Add displayPosition for UI purposes
+      };
+      homePlayers.push(playerWithPos);
     }
   });
 
@@ -281,9 +312,27 @@ const NewGamePage = () => {
     const isAlreadyAssigned = [...homePlayers, ...awayPlayers].some(p => p.userId === player.userId);
     if (!isAlreadyAssigned) {
       if (homePlayers.length < playersPerTeam) {
-        homePlayers.push(player);
+        // For home team, adjust queue position
+        const homeBaseIndex = homePlayers.length;
+        const homePos = homeStartPos + homeBaseIndex;
+        
+        // Create a copy of player with adjusted queue position
+        const playerWithPos = {
+          ...player,
+          displayPosition: homePos // Add displayPosition for UI purposes
+        };
+        homePlayers.push(playerWithPos);
       } else if (awayPlayers.length < playersPerTeam) {
-        awayPlayers.push(player);
+        // For away team, adjust queue position
+        const awayBaseIndex = awayPlayers.length;
+        const awayPos = awayStartPos + awayBaseIndex;
+        
+        // Create a copy of player with adjusted queue position
+        const playerWithPos = {
+          ...player,
+          displayPosition: awayPos // Add displayPosition for UI purposes
+        };
+        awayPlayers.push(playerWithPos);
       }
     }
   });
@@ -361,7 +410,7 @@ const NewGamePage = () => {
             'bg-white text-black'
       }`}>
         <div className="flex items-center gap-4">
-          <span className="font-mono text-lg">#{isAway ? player.queuePosition - 4 : player.queuePosition}</span>
+          <span className="font-mono text-lg">#{player.displayPosition || player.queuePosition}</span>
           <span>
             {player.username}
             {promotionBadge && (
