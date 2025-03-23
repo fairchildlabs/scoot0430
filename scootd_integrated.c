@@ -2043,6 +2043,7 @@ int main(int argc, char *argv[]) {
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
+        printf("  new-game <game_set_id> <court> [format] - Create a new game with next available players (format: text|json, default: text)\n");
         printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including active games, next-up players, and completed games\n");
         printf("  end-game <game_id> <home_score> <away_score> [autopromote] - End a game with the given scores and optionally auto-promote players (true/false, default is true)\n");
@@ -2135,7 +2136,25 @@ int main(int argc, char *argv[]) {
                 if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
                     fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
                 } else {
-                    propose_game(conn, game_set_id, court, format);
+                    propose_game(conn, game_set_id, court, format, false);
+                }
+            }
+        }
+    } else if (strcmp(command, "new-game") == 0) {
+        if (argc < 4) {
+            fprintf(stderr, "Usage: %s new-game <game_set_id> <court> [format]\n", argv[0]);
+        } else {
+            int game_set_id = atoi(argv[2]);
+            if (game_set_id <= 0) {
+                fprintf(stderr, "Invalid game_set_id: %s\n", argv[2]);
+            } else {
+                const char *court = argv[3];
+                const char *format = argc >= 5 ? argv[4] : "text";
+                
+                if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
+                    fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
+                } else {
+                    propose_game(conn, game_set_id, court, format, true);
                 }
             }
         }
