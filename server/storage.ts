@@ -476,7 +476,7 @@ export class DatabaseStorage implements IStorage {
     if (promotionInfo) {
       // If we have promotion info, only deactivate non-promoted players
       if (promotedUserIds.length > 0) {
-        // Use inArray and not() together to get "NOT IN" behavior
+        // Use notInArray to get "NOT IN" behavior
         await db
           .update(checkins)
           .set({ isActive: false })
@@ -484,7 +484,7 @@ export class DatabaseStorage implements IStorage {
             and(
               eq(checkins.gameId, gameId),
               // User is not in the promoted players list - avoid direct SQL with params
-              not(inArray(checkins.userId, promotedUserIds))
+              notInArray(checkins.userId, promotedUserIds)
             )
           );
       } else {
