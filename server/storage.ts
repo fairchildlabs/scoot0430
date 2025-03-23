@@ -447,47 +447,64 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Before creating new checkins, deactivate any existing active checkins for these promoted players
-      // that are in the NEXT UP queue to avoid duplicates
+      // De-duplicate by deactivating ALL existing active checkins in the NEXT UP queue 
+      // for these players, not just their most recent ones
       if (promotedPlayers.length > 0) {
-        console.log(`Deactivating existing NEXT UP checkins for ${promotedPlayers.length} promoted players`);
+        console.log(`Deactivating ALL existing checkins for ${promotedPlayers.length} promoted players to prevent duplicates`);
         const promotedUserIds = promotedPlayers.map(p => p.userId);
         
-        // Find existing active checkins in NEXT UP for these players
+        // Find ALL existing checkins for these players that aren't part of a current game
+        // This will catch any potential duplicates regardless of queue position
         const existingCheckins = await db
           .select({
             id: checkins.id,
             userId: checkins.userId,
             username: users.username,
             queuePosition: checkins.queuePosition,
-            type: checkins.type
+            type: checkins.type,
+            gameId: checkins.gameId,
+            isActive: checkins.isActive
           })
           .from(checkins)
           .innerJoin(users, eq(checkins.userId, users.id))
           .where(
             and(
               inArray(checkins.userId, promotedUserIds),
-              isNull(checkins.gameId), // In NEXT UP queue
-              eq(checkins.isActive, true),
+              // We need to get all checkins that aren't in an active game (gameId is null OR game is finished)
+              isNull(checkins.gameId),
               eq(checkins.gameSetId, activeGameSet.id)
             )
-          );
+          )
+          .orderBy(asc(checkins.queuePosition));
         
+        // Log both active and inactive checkins to debug duplicates
         if (existingCheckins.length > 0) {
-          console.log(`Found ${existingCheckins.length} existing active checkins to deactivate:`, 
-            existingCheckins.map(c => `${c.username} (Pos: ${c.queuePosition}, Type: ${c.type})`));
+          console.log(`Found ${existingCheckins.length} existing checkins:`, 
+            existingCheckins.map(c => `${c.username} (Pos: ${c.queuePosition}, Type: ${c.type}, Active: ${c.isActive}, GameId: ${c.gameId || 'null'})`));
           
-          // Deactivate these existing checkins
-          await db
-            .update(checkins)
-            .set({ isActive: false })
-            .where(
-              and(
-                inArray(checkins.userId, promotedUserIds),
-                isNull(checkins.gameId),
-                eq(checkins.isActive, true),
-                eq(checkins.gameSetId, activeGameSet.id)
-              )
-            );
+          // Get just the active ones to deactivate
+          const activeCheckins = existingCheckins.filter(c => c.isActive);
+          
+          if (activeCheckins.length > 0) {
+            console.log(`Deactivating ${activeCheckins.length} active checkins to prevent duplicates`);
+            
+            // Deactivate all active checkins for these users that aren't in a game
+            await db
+              .update(checkins)
+              .set({ isActive: false })
+              .where(
+                and(
+                  inArray(checkins.userId, promotedUserIds),
+                  isNull(checkins.gameId),
+                  eq(checkins.isActive, true),
+                  eq(checkins.gameSetId, activeGameSet.id)
+                )
+              );
+          } else {
+            console.log('No active checkins found that need deactivation');
+          }
+        } else {
+          console.log('No existing checkins found for promoted players');
         }
       }
       
