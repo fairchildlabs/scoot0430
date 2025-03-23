@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <libpq-fe.h>
 
 /* Database connection string */
@@ -1296,6 +1297,304 @@ int checkout_player(PGconn *conn, int queue_position) {
     return checkin_id;
 }
 
+/* Function to propose a game without creating it */
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format) {
+    // First check if the game set exists
+    const char *check_game_set_query = "SELECT id, players_per_team FROM game_sets WHERE id = $1";
+    
+    char set_id_str[16];
+    sprintf(set_id_str, "%d", game_set_id);
+    const char *check_params[1] = { set_id_str };
+    
+    PGresult *check_result = PQexecParams(conn, check_game_set_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(check_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game set check query failed: %s\n", PQerrorMessage(conn));
+        PQclear(check_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when checking game set\"\n");
+            printf("}\n");
+        } else {
+            printf("Error checking game set: Database error\n");
+        }
+        return;
+    }
+    
+    if (PQntuples(check_result) == 0) {
+        PQclear(check_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Invalid game_set_id: %d\"\n", game_set_id);
+            printf("}\n");
+        } else {
+            printf("Invalid game_set_id: %d\n", game_set_id);
+        }
+        return;
+    }
+    
+    // Get players_per_team value
+    int players_per_team = atoi(PQgetvalue(check_result, 0, 1));
+    PQclear(check_result);
+    
+    // Check if there are active games on this court for this game set
+    const char *check_game_query = 
+        "SELECT id FROM games "
+        "WHERE set_id = $1 AND court = $2 AND state IN ('started', 'pending')";
+    
+    const char *game_params[2] = { set_id_str, court };
+    PGresult *game_result = PQexecParams(conn, check_game_query, 2, NULL, game_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(game_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game check query failed: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when checking active games\"\n");
+            printf("}\n");
+        } else {
+            printf("Error checking active games: Database error\n");
+        }
+        return;
+    }
+    
+    if (PQntuples(game_result) > 0) {
+        int game_id = atoi(PQgetvalue(game_result, 0, 0));
+        PQclear(game_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"GAME_IN_PROGRESS\",\n");
+            printf("  \"message\": \"Game already in progress on court %s (Game ID: %d)\",\n", court, game_id);
+            printf("  \"game_id\": %d\n", game_id);
+            printf("}\n");
+        } else {
+            printf("Game already in progress on court %s (Game ID: %d)\n", court, game_id);
+        }
+        return;
+    }
+    
+    PQclear(game_result);
+    
+    // Get available players (not assigned to a game)
+    const char *players_query = 
+        "SELECT c.queue_position, u.username, u.id, c.type, u.birth_year "
+        "FROM checkins c "
+        "JOIN users u ON c.user_id = u.id "
+        "WHERE c.is_active = true AND c.game_set_id = $1 AND c.game_id IS NULL "
+        "ORDER BY c.queue_position";
+    
+    PGresult *players_result = PQexecParams(conn, players_query, 1, NULL, check_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(players_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Players query failed: %s\n", PQerrorMessage(conn));
+        PQclear(players_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when fetching available players\"\n");
+            printf("}\n");
+        } else {
+            printf("Error fetching available players: Database error\n");
+        }
+        return;
+    }
+    
+    int available_players = PQntuples(players_result);
+    int required_players = players_per_team * 2;
+    
+    if (available_players < required_players) {
+        PQclear(players_result);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"NEED_MORE_PLAYERS\",\n");
+            printf("  \"message\": \"Not enough players available\",\n");
+            printf("  \"available\": %d,\n", available_players);
+            printf("  \"required\": %d\n", required_players);
+            printf("}\n");
+        } else {
+            printf("Not enough players available. Need %d, have %d.\n", 
+                   required_players, available_players);
+        }
+        return;
+    }
+    
+    // We have enough players, let's create the proposed team assignments
+    if (strcmp(format, "json") == 0) {
+        printf("{\n");
+        printf("  \"status\": \"SUCCESS\",\n");
+        printf("  \"message\": \"Game can be created\",\n");
+        printf("  \"game_set_id\": %d,\n", game_set_id);
+        printf("  \"court\": \"%s\",\n", court);
+        printf("  \"players_per_team\": %d,\n", players_per_team);
+        printf("  \"home_team\": [\n");
+        
+        for (int i = 0; i < players_per_team; i++) {
+            int position = atoi(PQgetvalue(players_result, i, 0));
+            const char *username = PQgetvalue(players_result, i, 1);
+            int userId = atoi(PQgetvalue(players_result, i, 2));
+            const char *type = PQgetvalue(players_result, i, 3);
+            
+            // Check if player is OG based on birth year
+            bool is_og = false;
+            if (!PQgetisnull(players_result, i, 4)) {
+                int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                is_og = birth_year <= 1980;  // players born in 1980 or earlier are OGs
+            }
+            
+            printf("    {\n");
+            printf("      \"position\": %d,\n", position);
+            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"user_id\": %d,\n", userId);
+            printf("      \"type\": \"%s\",\n", type);
+            printf("      \"team\": 1,\n");
+            printf("      \"is_og\": %s\n", is_og ? "true" : "false");
+            printf("    }%s\n", (i < players_per_team - 1) ? "," : "");
+        }
+        
+        printf("  ],\n");
+        printf("  \"away_team\": [\n");
+        
+        for (int i = players_per_team; i < players_per_team * 2; i++) {
+            int position = atoi(PQgetvalue(players_result, i, 0));
+            const char *username = PQgetvalue(players_result, i, 1);
+            int userId = atoi(PQgetvalue(players_result, i, 2));
+            const char *type = PQgetvalue(players_result, i, 3);
+            
+            // Check if player is OG based on birth year
+            bool is_og = false;
+            if (!PQgetisnull(players_result, i, 4)) {
+                int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                is_og = birth_year <= 1980;  // players born in 1980 or earlier are OGs
+            }
+            
+            printf("    {\n");
+            printf("      \"position\": %d,\n", position);
+            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"user_id\": %d,\n", userId);
+            printf("      \"type\": \"%s\",\n", type);
+            printf("      \"team\": 2,\n");
+            printf("      \"is_og\": %s\n", is_og ? "true" : "false");
+            printf("    }%s\n", (i < players_per_team * 2 - 1) ? "," : "");
+        }
+        
+        printf("  ],\n");
+        printf("  \"next_up\": [\n");
+        
+        for (int i = players_per_team * 2; i < available_players; i++) {
+            int position = atoi(PQgetvalue(players_result, i, 0));
+            const char *username = PQgetvalue(players_result, i, 1);
+            int userId = atoi(PQgetvalue(players_result, i, 2));
+            const char *type = PQgetvalue(players_result, i, 3);
+            
+            // Check if player is OG based on birth year
+            bool is_og = false;
+            if (!PQgetisnull(players_result, i, 4)) {
+                int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                is_og = birth_year <= 1980;  // players born in 1980 or earlier are OGs
+            }
+            
+            printf("    {\n");
+            printf("      \"position\": %d,\n", position);
+            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"user_id\": %d,\n", userId);
+            printf("      \"type\": \"%s\",\n", type);
+            printf("      \"team\": null,\n");
+            printf("      \"is_og\": %s\n", is_og ? "true" : "false");
+            printf("    }%s\n", (i < available_players - 1) ? "," : "");
+        }
+        
+        printf("  ]\n");
+        printf("}\n");
+    } else {
+        printf("Game proposal for game set #%d on court '%s':\n", game_set_id, court);
+        printf("------------------------------------------\n");
+        printf("HOME TEAM (Team 1):\n");
+        printf("%-8s | %-20s | %-10s | %-15s | %-5s\n", 
+               "Position", "Username", "User ID", "Type", "OG");
+        printf("------------------------------------------\n");
+        
+        for (int i = 0; i < players_per_team; i++) {
+            int position = atoi(PQgetvalue(players_result, i, 0));
+            const char *username = PQgetvalue(players_result, i, 1);
+            int userId = atoi(PQgetvalue(players_result, i, 2));
+            const char *type = PQgetvalue(players_result, i, 3);
+            
+            // Check if player is OG based on birth year
+            const char *og_str = "No";
+            if (!PQgetisnull(players_result, i, 4)) {
+                int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                if (birth_year <= 1980) {  // players born in 1980 or earlier are OGs
+                    og_str = "Yes";
+                }
+            }
+            
+            printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                   position, username, userId, type, og_str);
+        }
+        
+        printf("\nAWAY TEAM (Team 2):\n");
+        printf("%-8s | %-20s | %-10s | %-15s | %-5s\n", 
+               "Position", "Username", "User ID", "Type", "OG");
+        printf("------------------------------------------\n");
+        
+        for (int i = players_per_team; i < players_per_team * 2; i++) {
+            int position = atoi(PQgetvalue(players_result, i, 0));
+            const char *username = PQgetvalue(players_result, i, 1);
+            int userId = atoi(PQgetvalue(players_result, i, 2));
+            const char *type = PQgetvalue(players_result, i, 3);
+            
+            // Check if player is OG based on birth year
+            const char *og_str = "No";
+            if (!PQgetisnull(players_result, i, 4)) {
+                int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                if (birth_year <= 1980) {  // players born in 1980 or earlier are OGs
+                    og_str = "Yes";
+                }
+            }
+            
+            printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                   position, username, userId, type, og_str);
+        }
+        
+        if (available_players > players_per_team * 2) {
+            printf("\nNEXT UP PLAYERS:\n");
+            printf("%-8s | %-20s | %-10s | %-15s | %-5s\n", 
+                   "Position", "Username", "User ID", "Type", "OG");
+            printf("------------------------------------------\n");
+            
+            for (int i = players_per_team * 2; i < available_players; i++) {
+                int position = atoi(PQgetvalue(players_result, i, 0));
+                const char *username = PQgetvalue(players_result, i, 1);
+                int userId = atoi(PQgetvalue(players_result, i, 2));
+                const char *type = PQgetvalue(players_result, i, 3);
+                
+                // Check if player is OG based on birth year
+                const char *og_str = "No";
+                if (!PQgetisnull(players_result, i, 4)) {
+                    int birth_year = atoi(PQgetvalue(players_result, i, 4));
+                    if (birth_year <= 1980) {  // players born in 1980 or earlier are OGs
+                        og_str = "Yes";
+                    }
+                }
+                
+                printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                       position, username, userId, type, og_str);
+            }
+        }
+    }
+    
+    PQclear(players_result);
+}
+
 /* Simple command line option parser */
 void process_command(PGconn *conn, int argc, char *argv[]) {
     if (argc < 2) {
@@ -1521,6 +1820,29 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         }
         
         get_next_up_players(conn, game_set_id, format);
+    }
+    else if (strcmp(argv[1], "propose-game") == 0) {
+        if (argc < 4) {
+            printf("Usage: %s propose-game <game_set_id> <court> [format]\n", argv[0]);
+            printf("       format: text|json (default: text)\n");
+            return;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        const char *court = argv[3];
+        const char *format = "text";
+        
+        // If format is provided
+        if (argc >= 5) {
+            if (strcmp(argv[4], "json") == 0 || strcmp(argv[4], "text") == 0) {
+                format = argv[4];
+            } else {
+                printf("Error: Invalid format '%s'. Valid formats are 'text' or 'json'.\n", argv[4]);
+                return;
+            }
+        }
+        
+        propose_game(conn, game_set_id, court, format);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
