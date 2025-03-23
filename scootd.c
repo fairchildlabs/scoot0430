@@ -701,7 +701,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                        position, 
                        username, 
                        user_id,
-                       is_og ? "Y" : "N",
+                       is_og ? "Yes" : "No",
                        checkin_type);
             }
         }
@@ -883,7 +883,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                    position,
                    username,
                    user_id,
-                   is_og ? "Y" : "N",
+                   is_og ? "Yes" : "No",
                    checkin_type);
         }
         
@@ -905,7 +905,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                    position,
                    username,
                    user_id,
-                   is_og ? "Y" : "N",
+                   is_og ? "Yes" : "No",
                    checkin_type);
         }
     }
