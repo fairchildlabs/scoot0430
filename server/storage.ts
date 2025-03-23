@@ -446,6 +446,51 @@ export class DatabaseStorage implements IStorage {
           );
       }
 
+      // Before creating new checkins, deactivate any existing active checkins for these promoted players
+      // that are in the NEXT UP queue to avoid duplicates
+      if (promotedPlayers.length > 0) {
+        console.log(`Deactivating existing NEXT UP checkins for ${promotedPlayers.length} promoted players`);
+        const promotedUserIds = promotedPlayers.map(p => p.userId);
+        
+        // Find existing active checkins in NEXT UP for these players
+        const existingCheckins = await db
+          .select({
+            id: checkins.id,
+            userId: checkins.userId,
+            username: users.username,
+            queuePosition: checkins.queuePosition,
+            type: checkins.type
+          })
+          .from(checkins)
+          .innerJoin(users, eq(checkins.userId, users.id))
+          .where(
+            and(
+              inArray(checkins.userId, promotedUserIds),
+              isNull(checkins.gameId), // In NEXT UP queue
+              eq(checkins.isActive, true),
+              eq(checkins.gameSetId, activeGameSet.id)
+            )
+          );
+        
+        if (existingCheckins.length > 0) {
+          console.log(`Found ${existingCheckins.length} existing active checkins to deactivate:`, 
+            existingCheckins.map(c => `${c.username} (Pos: ${c.queuePosition}, Type: ${c.type})`));
+          
+          // Deactivate these existing checkins
+          await db
+            .update(checkins)
+            .set({ isActive: false })
+            .where(
+              and(
+                inArray(checkins.userId, promotedUserIds),
+                isNull(checkins.gameId),
+                eq(checkins.isActive, true),
+                eq(checkins.gameSetId, activeGameSet.id)
+              )
+            );
+        }
+      }
+      
       // Then create new checkins for promoted team players at sequential positions
       for (let i = 0; i < promotedPlayers.length; i++) {
         const player = promotedPlayers[i];
@@ -503,46 +548,6 @@ export class DatabaseStorage implements IStorage {
     }
       
     console.log(`Deactivated non-promoted checkins for game ${gameId}`);
-      
-    // If we have promoted players, check for any existing active checkins in the queue
-    // that might be duplicates from previous promotions (same userId, gameId=null)
-    if (promotionInfo) {
-      const promotedUserIds = promotedPlayers.map(p => p.userId);
-        
-      // Check for any active checkins that might be duplicates 
-      const duplicateCheckins = await db
-        .select({
-          id: checkins.id,
-          userId: checkins.userId,
-          username: users.username,
-          type: checkins.type
-        })
-        .from(checkins)
-        .innerJoin(users, eq(checkins.userId, users.id))
-        .where(
-          and(
-            inArray(checkins.userId, promotedUserIds),
-            isNull(checkins.gameId), // In the queue (Next Up)
-            eq(checkins.isActive, true),
-            eq(checkins.gameSetId, activeGameSet.id)
-          )
-        );
-          
-      if (duplicateCheckins.length > 0) {
-        console.log(`Found ${duplicateCheckins.length} duplicate checkins to deactivate:`, 
-          duplicateCheckins.map(c => `${c.username} (Type: ${c.type})`));
-            
-        // Deactivate these duplicate checkins
-        const duplicateIds = duplicateCheckins.map(c => c.id);
-        
-        if (duplicateIds.length > 0) {
-          await db
-            .update(checkins)
-            .set({ isActive: false })
-            .where(inArray(checkins.id, duplicateIds));
-        }
-      }
-    }
       
     // Get all auto-up eligible players and create new active checkins for them
     console.log('Finding auto-up players:', {
