@@ -186,7 +186,7 @@ void list_active_games(PGconn *conn) {
 void show_active_game_set(PGconn *conn) {
     const char *query = 
         "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
-        "current_queue_position, queue_next_up, created_at "
+        "current_queue_position, queue_next_up, start_time "
         "FROM game_sets "
         "WHERE is_active = true";
     
@@ -394,7 +394,7 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
                     int team2_score = atoi(PQgetvalue(recent_res, i, 3));
                     const char *state = PQgetvalue(recent_res, i, 4);
                     int team = atoi(PQgetvalue(recent_res, i, 5));
-                    const char *created_at = PQgetvalue(recent_res, i, 6);
+                    const char *start_time = PQgetvalue(recent_res, i, 6);
                     
                     const char *result = "N/A";
                     if (strcmp(state, "completed") == 0) {
@@ -407,7 +407,7 @@ void show_player_info(PGconn *conn, const char *username, const char *format) {
                     
                     printf("%d | %s | %d | %d-%d | %s | %s\n",
                            game_id, court, team, team1_score, team2_score, 
-                           result, created_at);
+                           result, start_time);
                 }
             }
             
@@ -1280,7 +1280,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     
     // Get game set details
     sprintf(query, "SELECT id, created_by, gym, number_of_courts, max_consecutive_games, "
-                  "current_queue_position, queue_next_up, created_at, is_active "
+                  "current_queue_position, queue_next_up, start_time, is_active "
                   "FROM game_sets WHERE id = %d", game_set_id);
     
     res = PQexec(conn, query);
@@ -1615,10 +1615,10 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get recent completed games
         sprintf(query, 
-                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.updated_at "
+                "SELECT g.id, g.court, g.team1_score, g.team2_score, g.start_time, g.end_time "
                 "FROM games g "
                 "WHERE g.set_id = %d AND g.state = 'completed' "
-                "ORDER BY g.updated_at DESC "
+                "ORDER BY g.end_time DESC "
                 "LIMIT 5",
                 game_set_id);
         
