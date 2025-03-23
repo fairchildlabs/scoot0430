@@ -553,7 +553,7 @@ int get_active_game_set_id(PGconn *conn) {
 }
 
 /* Get detailed player information */
-void get_player_info(PGconn *conn, const char *username) {
+void get_player_info(PGconn *conn, const char *username, const char *format) {
     /* First get user details */
     const char *user_query = 
         "SELECT id, username, is_player, is_engineer, autoup, birth_year "
@@ -586,13 +586,29 @@ void get_player_info(PGconn *conn, const char *username) {
         birth_year = PQgetvalue(user_result, 0, 5);
     }
     
-    printf("=== Player Information: %s (ID: %d) ===\n", user_name, user_id);
-    printf("Status: %s%s%s\n", 
-           is_player ? "Player " : "",
-           is_engineer ? "Engineer " : "",
-           autoup ? "Auto-Up" : "");
-    if (birth_year) {
-        printf("Birth Year: %s\n", birth_year);
+    /* Handle different output formats */
+    if (strcmp(format, "json") == 0) {
+        printf("{\n");
+        printf("  \"player\": {\n");
+        printf("    \"id\": %d,\n", user_id);
+        printf("    \"username\": \"%s\",\n", user_name);
+        printf("    \"is_player\": %s,\n", is_player ? "true" : "false");
+        printf("    \"is_engineer\": %s,\n", is_engineer ? "true" : "false");
+        printf("    \"autoup\": %s,\n", autoup ? "true" : "false");
+        if (birth_year) {
+            printf("    \"birth_year\": %s,\n", birth_year);
+        } else {
+            printf("    \"birth_year\": null,\n");
+        }
+    } else {
+        printf("=== Player Information: %s (ID: %d) ===\n", user_name, user_id);
+        printf("Status: %s%s%s\n", 
+               is_player ? "Player " : "",
+               is_engineer ? "Engineer " : "",
+               autoup ? "Auto-Up" : "");
+        if (birth_year) {
+            printf("Birth Year: %s\n", birth_year);
+        }
     }
     
     /* Get active checkins for this user */
@@ -616,28 +632,62 @@ void get_player_info(PGconn *conn, const char *username) {
     }
     
     int checkin_rows = PQntuples(checkin_result);
-    printf("\nActive Checkins: %d\n", checkin_rows);
     
-    for (int i = 0; i < checkin_rows; i++) {
-        int checkin_id = atoi(PQgetvalue(checkin_result, i, 0));
-        int position = atoi(PQgetvalue(checkin_result, i, 1));
-        
-        const char *game_id_str = "none";
-        if (!PQgetisnull(checkin_result, i, 2)) {
-            game_id_str = PQgetvalue(checkin_result, i, 2);
+    if (strcmp(format, "json") == 0) {
+        printf("    \"active_checkins\": [\n");
+        for (int i = 0; i < checkin_rows; i++) {
+            int checkin_id = atoi(PQgetvalue(checkin_result, i, 0));
+            int position = atoi(PQgetvalue(checkin_result, i, 1));
+            
+            const char *game_id_str = "null";
+            if (!PQgetisnull(checkin_result, i, 2)) {
+                game_id_str = PQgetvalue(checkin_result, i, 2);
+            }
+            
+            const char *team_str = "null"; 
+            if (!PQgetisnull(checkin_result, i, 3)) {
+                team_str = PQgetvalue(checkin_result, i, 3);
+            }
+            
+            const char *type = PQgetvalue(checkin_result, i, 4);
+            const char *checkin_time = PQgetvalue(checkin_result, i, 5);
+            
+            printf("      {\n");
+            printf("        \"id\": %d,\n", checkin_id);
+            printf("        \"position\": %d,\n", position);
+            printf("        \"game_id\": %s,\n", game_id_str);
+            printf("        \"team\": %s,\n", team_str);
+            printf("        \"type\": \"%s\",\n", type);
+            printf("        \"check_in_time\": \"%s\"%s\n", 
+                   checkin_time,
+                   (i < checkin_rows - 1) ? "," : "");
+            printf("      }%s\n", (i < checkin_rows - 1) ? "," : "");
         }
+        printf("    ],\n");
+    } else {
+        printf("\nActive Checkins: %d\n", checkin_rows);
         
-        const char *team_str = "none"; 
-        if (!PQgetisnull(checkin_result, i, 3)) {
-            team_str = PQgetvalue(checkin_result, i, 3);
+        for (int i = 0; i < checkin_rows; i++) {
+            int checkin_id = atoi(PQgetvalue(checkin_result, i, 0));
+            int position = atoi(PQgetvalue(checkin_result, i, 1));
+            
+            const char *game_id_str = "none";
+            if (!PQgetisnull(checkin_result, i, 2)) {
+                game_id_str = PQgetvalue(checkin_result, i, 2);
+            }
+            
+            const char *team_str = "none"; 
+            if (!PQgetisnull(checkin_result, i, 3)) {
+                team_str = PQgetvalue(checkin_result, i, 3);
+            }
+            
+            const char *type = PQgetvalue(checkin_result, i, 4);
+            const char *checkin_time = PQgetvalue(checkin_result, i, 5);
+            
+            printf("  Position %d (ID: %d)\n", position, checkin_id);
+            printf("    Game: %s, Team: %s, Type: %s\n", game_id_str, team_str, type);
+            printf("    Check-in Time: %s\n", checkin_time);
         }
-        
-        const char *type = PQgetvalue(checkin_result, i, 4);
-        const char *checkin_time = PQgetvalue(checkin_result, i, 5);
-        
-        printf("  Position %d (ID: %d)\n", position, checkin_id);
-        printf("    Game: %s, Team: %s, Type: %s\n", game_id_str, team_str, type);
-        printf("    Check-in Time: %s\n", checkin_time);
     }
     
     /* Get player's game history */
@@ -660,27 +710,64 @@ void get_player_info(PGconn *conn, const char *username) {
     }
     
     int history_rows = PQntuples(history_result);
-    printf("\nRecent Games: %d\n", history_rows);
     
-    for (int i = 0; i < history_rows; i++) {
-        int game_id = atoi(PQgetvalue(history_result, i, 0));
-        const char *state = PQgetvalue(history_result, i, 1);
-        const char *court = PQgetvalue(history_result, i, 2);
-        int team = atoi(PQgetvalue(history_result, i, 3));
-        int team1_score = atoi(PQgetvalue(history_result, i, 4));
-        int team2_score = atoi(PQgetvalue(history_result, i, 5));
-        const char *start_time = PQgetvalue(history_result, i, 6);
-        
-        const char *end_time = "In progress";
-        if (!PQgetisnull(history_result, i, 7)) {
-            end_time = PQgetvalue(history_result, i, 7);
+    if (strcmp(format, "json") == 0) {
+        printf("    \"recent_games\": [\n");
+        for (int i = 0; i < history_rows; i++) {
+            int game_id = atoi(PQgetvalue(history_result, i, 0));
+            const char *state = PQgetvalue(history_result, i, 1);
+            const char *court = PQgetvalue(history_result, i, 2);
+            int team = atoi(PQgetvalue(history_result, i, 3));
+            int team1_score = atoi(PQgetvalue(history_result, i, 4));
+            int team2_score = atoi(PQgetvalue(history_result, i, 5));
+            const char *start_time = PQgetvalue(history_result, i, 6);
+            
+            const char *end_time = null;
+            if (!PQgetisnull(history_result, i, 7)) {
+                end_time = PQgetvalue(history_result, i, 7);
+            }
+            
+            printf("      {\n");
+            printf("        \"id\": %d,\n", game_id);
+            printf("        \"state\": \"%s\",\n", state);
+            printf("        \"court\": \"%s\",\n", court);
+            printf("        \"team\": %d,\n", team);
+            printf("        \"team1_score\": %d,\n", team1_score);
+            printf("        \"team2_score\": %d,\n", team2_score);
+            printf("        \"start_time\": \"%s\",\n", start_time);
+            if (end_time) {
+                printf("        \"end_time\": \"%s\"\n", end_time);
+            } else {
+                printf("        \"end_time\": null\n");
+            }
+            printf("      }%s\n", (i < history_rows - 1) ? "," : "");
         }
+        printf("    ]\n");
+        printf("  }\n");
+        printf("}\n");
+    } else {
+        printf("\nRecent Games: %d\n", history_rows);
         
-        printf("  Game #%d on Court %s (State: %s)\n", game_id, court, state);
-        printf("    Team: %d, Score: %d-%d\n", team, team1_score, team2_score);
-        printf("    Started: %s\n", start_time);
-        if (strcmp(end_time, "In progress") != 0) {
-            printf("    Ended: %s\n", end_time);
+        for (int i = 0; i < history_rows; i++) {
+            int game_id = atoi(PQgetvalue(history_result, i, 0));
+            const char *state = PQgetvalue(history_result, i, 1);
+            const char *court = PQgetvalue(history_result, i, 2);
+            int team = atoi(PQgetvalue(history_result, i, 3));
+            int team1_score = atoi(PQgetvalue(history_result, i, 4));
+            int team2_score = atoi(PQgetvalue(history_result, i, 5));
+            const char *start_time = PQgetvalue(history_result, i, 6);
+            
+            const char *end_time = "In progress";
+            if (!PQgetisnull(history_result, i, 7)) {
+                end_time = PQgetvalue(history_result, i, 7);
+            }
+            
+            printf("  Game #%d on Court %s (State: %s)\n", game_id, court, state);
+            printf("    Team: %d, Score: %d-%d\n", team, team1_score, team2_score);
+            printf("    Started: %s\n", start_time);
+            if (strcmp(end_time, "In progress") != 0) {
+                printf("    Ended: %s\n", end_time);
+            }
         }
     }
     
@@ -1066,7 +1153,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  active-games - List active games\n");
         printf("  active-game-set - Show active game set details\n");
         printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
-        printf("  player <username> - Show detailed information about a player\n");
+        printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
         printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
@@ -1144,11 +1231,21 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
     }
     else if (strcmp(argv[1], "player") == 0) {
         if (argc < 3) {
-            printf("Usage: %s player <username>\n", argv[0]);
+            printf("Usage: %s player <username> [format]\n", argv[0]);
+            printf("  format: text (default) | json\n");
             return;
         }
         
-        get_player_info(conn, argv[2]);
+        const char *format = "text";
+        if (argc >= 4) {
+            format = argv[3];
+            if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
+                printf("Invalid format: %s (must be 'text' or 'json')\n", format);
+                return;
+            }
+        }
+        
+        get_player_info(conn, argv[2], format);
     }
     else if (strcmp(argv[1], "promote") == 0) {
         if (argc < 4) {
