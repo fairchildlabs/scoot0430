@@ -108,7 +108,7 @@ void list_users(PGconn *conn) {
  */
 void list_active_checkins(PGconn *conn) {
     const char *query = 
-        "SELECT c.id, c.user_id, u.username, c.club_index, c.queue_position, c.checkin_type "
+        "SELECT c.id, c.user_id, u.username, c.club_index, c.queue_position, c.type AS checkin_type "
         "FROM checkins c "
         "JOIN users u ON c.user_id = u.id "
         "WHERE c.is_active = true "
@@ -525,7 +525,7 @@ void promote_players(PGconn *conn, int game_id, bool promote_winners) {
         
         // Insert new check-in
         sprintf(query, 
-                "INSERT INTO checkins (user_id, club_index, queue_position, is_active, checkin_type) "
+                "INSERT INTO checkins (user_id, club_index, queue_position, is_active, type) "
                 "VALUES (%d, (SELECT club_index FROM game_sets WHERE id = %d), %d, true, 'promoted') "
                 "RETURNING id",
                 user_id, set_id, queue_next_up + i);
@@ -621,7 +621,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
     sprintf(query, 
             "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, "
             "EXTRACT(YEAR FROM AGE(NOW(), MAKE_DATE(u.birth_year, 1, 1))) AS age, "
-            "c.checkin_type "
+            "c.type AS checkin_type "
             "FROM checkins c "
             "JOIN users u ON c.user_id = u.id "
             "WHERE c.is_active = true "
@@ -704,7 +704,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                        username,
                        age > 0 ? PQgetvalue(res, i, 5) : "N/A",
                        is_og ? "Yes" : "No",
-                       checkin_type);
+                       type);
             }
         }
     }
@@ -1088,7 +1088,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get next-up players
         sprintf(query, 
-                "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.checkin_type "
+                "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type AS checkin_type "
                 "FROM checkins c "
                 "JOIN users u ON c.user_id = u.id "
                 "WHERE c.is_active = true "
@@ -1126,7 +1126,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                 printf("      \"birth_year\": null,\n");
             }
             printf("      \"is_og\": %s,\n", is_og ? "true" : "false");
-            printf("      \"checkin_type\": \"%s\"\n", checkin_type);
+            printf("      \"checkin_type\": \"%s\"\n", type);
             printf("    }%s\n", i < next_up_count - 1 ? "," : "");
         }
         
@@ -1273,7 +1273,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         
         // Get next-up players
         sprintf(query, 
-                "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.checkin_type "
+                "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type AS checkin_type "
                 "FROM checkins c "
                 "JOIN users u ON c.user_id = u.id "
                 "WHERE c.is_active = true "
@@ -1308,7 +1308,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                 printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
                        position, username, user_id, 
                        is_og ? "Yes" : "No", 
-                       checkin_type);
+                       type);
             }
         } else {
             printf("No players in queue\n");
@@ -1553,7 +1553,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             
             char insert_query[512];
             sprintf(insert_query, 
-                    "INSERT INTO checkins (user_id, club_index, queue_position, is_active, checkin_type) "
+                    "INSERT INTO checkins (user_id, club_index, queue_position, is_active, type) "
                     "VALUES (%d, (SELECT club_index FROM game_sets WHERE id = %d), %d, true, '%s') "
                     "RETURNING id",
                     user_id, set_id, new_position, promotion_type);
@@ -1602,7 +1602,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     
                     char insert_query[512];
                     sprintf(insert_query, 
-                            "INSERT INTO checkins (user_id, club_index, queue_position, is_active, checkin_type) "
+                            "INSERT INTO checkins (user_id, club_index, queue_position, is_active, type) "
                             "VALUES (%d, (SELECT club_index FROM game_sets WHERE id = %d), %d, true, 'autoup') "
                             "RETURNING id",
                             user_id, set_id, current_next_up);
