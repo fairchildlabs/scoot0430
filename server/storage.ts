@@ -468,15 +468,32 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Deactivate ALL checkins for this game, regardless of promotion status
-    // For promoted players, we've already created new checkins with the proper positions,
-    // so we need to deactivate their old game check-ins to avoid duplicates
-    await db
-      .update(checkins)
-      .set({ isActive: false })
-      .where(eq(checkins.gameId, gameId));
+    // Deactivate ONLY the checkins for this game that were not promoted
+    // For promoted players, we should NOT deactivate their checkins as they need to remain active
+    const promotedUserIds = promotedPlayers.map(p => p.userId);
+    
+    // Deactivate only checkins for this game where user is not in promotedPlayers list
+    if (promotionInfo) {
+      // If we have promotion info, only deactivate non-promoted players
+      await db
+        .update(checkins)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(checkins.gameId, gameId),
+            // User is not in the promoted players list
+            sql`${checkins.userId} NOT IN (${promotedUserIds.join(',')})`
+          )
+        );
+    } else {
+      // No players were promoted, so deactivate all players for this game
+      await db
+        .update(checkins)
+        .set({ isActive: false })
+        .where(eq(checkins.gameId, gameId));
+    }
       
-    console.log(`Deactivated all checkins for game ${gameId}`);
+    console.log(`Deactivated non-promoted checkins for game ${gameId}`);
       
     // If we have promoted players, check for any existing active checkins in the queue
     // that might be duplicates from previous promotions (same userId, gameId=null)
@@ -718,6 +735,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getGame(gameId: number): Promise<Game & { players: (GamePlayer & { username: string, birthYear?: number, queuePosition: number | null })[] }> {
+    // Get active game set first to use in position calculations 
+    const activeGameSet = await this.getActiveGameSet();
+    const playersPerTeam = activeGameSet?.playersPerTeam || 4;
+    
     // Get the game
     const gameResults = await db
       .select()
@@ -754,21 +775,33 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(checkins.queuePosition));
     
     // Make sure all players have a queue position (even if null in database)
-    // For ones that have null queue positions, assign them based on team, 
-    // with Home team (team=1) getting positions 1-4 and Away team (team=2) getting positions 5-8
+    // For ones that have null queue positions, assign them based on team
+    // IMPORTANT: For Game 3+, Away team positions match Home team positions 
+    // Game 1: Home = 1-4, Away = 5-8 (for compatibility with existing data)
+    // Game 2: Home = 9-12, Away = 13-16 (for compatibility with existing data)
+    // Game 3: Home = 17-20, Away = 17-20 with team=2 differentiates them
+    
     const playersWithPositions = players.map((player, index) => {
       if (player.queuePosition === null) {
-        // Get the game number to determine position offsets
-        // Game 1: Home = 1-4, Away = 5-8
-        // Game 2: Home = 9-12, Away = 13-16
-        // Game 3: Home = 17-20, Away = 21-24, etc.
-        const gameOffset = (gameId - 1) * 8; // 8 players per game (4 home + 4 away)
+        // Calculate queue positions based on gameId and team
+        // Game 1: Home team = 1-4, Away team = 5-8 (first game is special case)
+        // Game 2: Home team = 9-12, Away team = 13-16 (second game is special case)
+        // Game 3+: Home team = 17-20, 25-28, etc., Away team = same numbers but team=2 to differentiate
+        let basePosition: number;
         
-        // Assign positions based on game number and team
-        const basePosition = player.team === 1 
-          ? 1 + gameOffset // Home team starts at 1, 9, 17, etc.
-          : 5 + gameOffset; // Away team starts at 5, 13, 21, etc.
-          
+        if (gameId <= 2) {
+          // First two games follow the old pattern for backward compatibility
+          const gameOffset = (gameId - 1) * 8; // 8 players per game (4 home + 4 away)
+          basePosition = player.team === 1 
+            ? 1 + gameOffset // Home team: 1-4 (Game 1), 9-12 (Game 2)
+            : 5 + gameOffset; // Away team: 5-8 (Game 1), 13-16 (Game 2)
+        } else {
+          // Games 3 and beyond use the new pattern where positions are the same
+          // but team differentiates between Home and Away
+          const homePosStart = (gameId - 1) * (playersPerTeam * 2) + 1;
+          basePosition = homePosStart; // Both Home and Away teams use same positions
+        }
+        
         // Find how many players are in the same team before this one
         const teamPlayers = players.filter(p => p.team === player.team);
         const positionInTeam = teamPlayers.findIndex(p => p.userId === player.userId);
@@ -781,10 +814,22 @@ export class DatabaseStorage implements IStorage {
       return player;
     });
     
-    // Sort by team first, then by queue position
-    const sortedPlayers = playersWithPositions.sort((a, b) => {
-      if (a.team !== b.team) return (a.team || 0) - (b.team || 0);
-      return (a.queuePosition || 0) - (b.queuePosition || 0);
+    // Filter out any undefined players and sort by team first, then by queue position
+    const validPlayers = playersWithPositions.filter(player => player !== undefined) as (GamePlayer & { 
+      username: string, 
+      birthYear?: number, 
+      queuePosition: number | null 
+    })[];
+    
+    // Sort by team first, then by queue position (with null safety)
+    const sortedPlayers = [...validPlayers].sort((a, b) => {
+      const teamA = a.team || 0;
+      const teamB = b.team || 0;
+      if (teamA !== teamB) return teamA - teamB;
+      
+      const posA = a.queuePosition || 0;
+      const posB = b.queuePosition || 0;
+      return posA - posB;
     });
     
     return {
@@ -1003,7 +1048,7 @@ export class DatabaseStorage implements IStorage {
     // This ensures our formula fix takes effect immediately without waiting for the next game to finish
     if (state.activeGameSet.currentQueuePosition > 50) { // Likely using the wrong formula if > 50
       // Count completed games to determine the correct position
-      const completedGamesCount = await db
+      const completedGamesResult = await db
         .select({ count: sql`COUNT(*)` })
         .from(games)
         .where(
@@ -1012,9 +1057,10 @@ export class DatabaseStorage implements IStorage {
             eq(games.state, 'final')
           )
         );
-        
-      const countResult = Number(completedGamesCount?.count || 0);
-      const gamesFinished = Number(countResult || 0);
+      
+      // Safely extract the count from the result
+      const countValue = completedGamesResult[0]?.count;
+      const gamesFinished = Number(countValue || 0);
       // Apply the corrected formula
       const correctQueuePosition = (state.activeGameSet.playersPerTeam * 2 * gamesFinished) + 1;
       
