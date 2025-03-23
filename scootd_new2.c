@@ -1715,14 +1715,6 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int team = atoi(PQgetvalue(players_result, j, 0));
                     int relative_position = atoi(PQgetvalue(players_result, j, 1));
                     int queue_position = atoi(PQgetvalue(players_result, j, 2));
-                    int user_id = atoi(PQgetvalue(players_result, j, 4));
-                    
-                    /* Check if player is OG based on birth year */
-                    bool is_og = false;
-                    if (!PQgetisnull(players_result, j, 5)) {
-                        int birth_year = atoi(PQgetvalue(players_result, j, 5));
-                        is_og = birth_year <= 1980;  /* players born in 1980 or earlier are OGs */
-                    }
                     const char *username = PQgetvalue(players_result, j, 3);
                     
                     printf("        {\n");
