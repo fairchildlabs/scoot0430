@@ -1245,10 +1245,10 @@ void finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score) 
     
     PQclear(res);
     
-    // Update game
+    // Update game with scores, end time, and mark as completed
     sprintf(query, 
             "UPDATE games "
-            "SET team1_score = %d, team2_score = %d, state = 'completed' "
+            "SET team1_score = %d, team2_score = %d, state = 'completed', end_time = NOW() "
             "WHERE id = %d "
             "RETURNING id, set_id",
             team1_score, team2_score, game_id);
@@ -1903,10 +1903,10 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
     
     PQclear(res);
     
-    // Update game with scores and mark as completed
+    // Update game with scores, end time, and mark as completed
     sprintf(query, 
             "UPDATE games "
-            "SET team1_score = %d, team2_score = %d, state = 'completed' "
+            "SET team1_score = %d, team2_score = %d, state = 'completed', end_time = NOW() "
             "WHERE id = %d "
             "RETURNING id",
             home_score, away_score, game_id);
