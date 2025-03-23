@@ -1698,7 +1698,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             const char *game_params[1] = { game_id_str };
             
             const char *players_query = 
-                "SELECT gp.team, gp.relative_position, c.queue_position, u.username "
+                "SELECT gp.team, gp.relative_position, c.queue_position, u.username, u.id, u.birth_year "
                 "FROM game_players gp "
                 "JOIN users u ON gp.user_id = u.id "
                 "JOIN checkins c ON u.id = c.user_id AND c.game_id = gp.game_id "
@@ -1716,6 +1716,14 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int relative_position = atoi(PQgetvalue(players_result, j, 1));
                     int queue_position = atoi(PQgetvalue(players_result, j, 2));
                     const char *username = PQgetvalue(players_result, j, 3);
+                    int userId = atoi(PQgetvalue(players_result, j, 4));
+                    
+                    // Check if player is OG based on birth year
+                    bool is_og = false;
+                    if (!PQgetisnull(players_result, j, 5)) {
+                        int birth_year = atoi(PQgetvalue(players_result, j, 5));
+                        is_og = birth_year <= 1980;  // players born in 1980 or earlier are OGs
+                    }
                     
                     printf("        {\n");
                     printf("          \"username\": \"%s\",\n", username);
