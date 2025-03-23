@@ -626,30 +626,66 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         if (next_up_count > 0) {
             printf("=== NEXT UP ===\n");
             
-            // Column headers
-            printf("POS  USERNAME         ID   USER_ID\n");
-            printf("--- --------------- ---- --------- \n");
-            
-            for (int i = 0; i < next_up_count; i++) {
-                int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
-                const char *username = PQgetvalue(next_up_result, i, 1);
-                int user_id = atoi(PQgetvalue(next_up_result, i, 2));
+            // Calculate home team (first half of next up players)
+            int home_team_count = next_up_count / 2;
+            if (home_team_count > 0) {
+                printf("HOME TEAM (Team 1):\n");
+                printf("Position | Username             | User ID    | Type            | OG   \n");
+                printf("------------------------------------------\n");
                 
-                // Check if player is OG
-                const char *og_status = "";
-                if (!PQgetisnull(next_up_result, i, 5)) {
-                    int birth_year = atoi(PQgetvalue(next_up_result, i, 5));
-                    if (is_og_player(birth_year)) {
-                        og_status = " (OG)";
+                for (int i = 0; i < home_team_count; i++) {
+                    int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
+                    const char *username = PQgetvalue(next_up_result, i, 1);
+                    int user_id = atoi(PQgetvalue(next_up_result, i, 2));
+                    const char *type = PQgetvalue(next_up_result, i, 3);
+                    
+                    // Check if player is OG
+                    const char *og_status = "No";
+                    if (!PQgetisnull(next_up_result, i, 5)) {
+                        int birth_year = atoi(PQgetvalue(next_up_result, i, 5));
+                        if (is_og_player(birth_year)) {
+                            og_status = "Yes";
+                        }
                     }
+                    
+                    printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                           queue_position, 
+                           username, 
+                           user_id,
+                           type,
+                           og_status);
                 }
+                printf("\n");
+            }
+            
+            // Calculate away team (second half of next up players)
+            if (next_up_count > home_team_count) {
+                printf("AWAY TEAM (Team 2):\n");
+                printf("Position | Username             | User ID    | Type            | OG   \n");
+                printf("------------------------------------------\n");
                 
-                printf("%3d %-15s %4s %9d%s\n", 
-                       queue_position, 
-                       username, 
-                       "", 
-                       user_id,
-                       og_status);
+                for (int i = home_team_count; i < next_up_count; i++) {
+                    int queue_position = atoi(PQgetvalue(next_up_result, i, 0));
+                    const char *username = PQgetvalue(next_up_result, i, 1);
+                    int user_id = atoi(PQgetvalue(next_up_result, i, 2));
+                    const char *type = PQgetvalue(next_up_result, i, 3);
+                    
+                    // Check if player is OG
+                    const char *og_status = "No";
+                    if (!PQgetisnull(next_up_result, i, 5)) {
+                        int birth_year = atoi(PQgetvalue(next_up_result, i, 5));
+                        if (is_og_player(birth_year)) {
+                            og_status = "Yes";
+                        }
+                    }
+                    
+                    printf("%-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                           queue_position, 
+                           username, 
+                           user_id,
+                           type,
+                           og_status);
+                }
             }
             printf("\n");
         }
@@ -691,55 +727,64 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     int player_count = PQntuples(players_result);
                     
                     if (player_count > 0) {
-                        printf("  Team 1 (HOME)%s:\n", team1_score > team2_score ? " [WINNER]" : "");
+                        printf("  HOME TEAM (Team 1)%s:\n", team1_score > team2_score ? " [WINNER]" : "");
+                        printf("  Position | Username             | User ID    | Type            | OG   \n");
+                        printf("  ------------------------------------------\n");
+                        
                         for (int j = 0; j < player_count; j++) {
                             int team = atoi(PQgetvalue(players_result, j, 0));
                             if (team != 1) continue;
                             
                             int relative_position = atoi(PQgetvalue(players_result, j, 1));
-                            /* Not used: int queue_position = atoi(PQgetvalue(players_result, j, 2)); */
+                            int queue_position = atoi(PQgetvalue(players_result, j, 2));
                             const char *username = PQgetvalue(players_result, j, 3);
                             int user_id = atoi(PQgetvalue(players_result, j, 4));
                             
                             // Check if player is OG
-                            const char *og_status = "";
+                            const char *og_status = "No";
                             if (!PQgetisnull(players_result, j, 5)) {
                                 int birth_year = atoi(PQgetvalue(players_result, j, 5));
                                 if (is_og_player(birth_year)) {
-                                    og_status = " (OG)";
+                                    og_status = "Yes";
                                 }
                             }
                             
-                            printf("  %d. %s [%d]%s\n", 
-                                   relative_position, 
+                            printf("  %-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                                   queue_position, 
                                    username, 
                                    user_id,
+                                   team1_score > team2_score ? "win_promoted" : "loss_promoted",
                                    og_status);
                         }
+                        printf("\n");
                         
-                        printf("  Team 2 (AWAY)%s:\n", team2_score > team1_score ? " [WINNER]" : "");
+                        printf("  AWAY TEAM (Team 2)%s:\n", team2_score > team1_score ? " [WINNER]" : "");
+                        printf("  Position | Username             | User ID    | Type            | OG   \n");
+                        printf("  ------------------------------------------\n");
+                        
                         for (int j = 0; j < player_count; j++) {
                             int team = atoi(PQgetvalue(players_result, j, 0));
                             if (team != 2) continue;
                             
                             int relative_position = atoi(PQgetvalue(players_result, j, 1));
-                            /* Not used: int queue_position = atoi(PQgetvalue(players_result, j, 2)); */
+                            int queue_position = atoi(PQgetvalue(players_result, j, 2));
                             const char *username = PQgetvalue(players_result, j, 3);
                             int user_id = atoi(PQgetvalue(players_result, j, 4));
                             
                             // Check if player is OG
-                            const char *og_status = "";
+                            const char *og_status = "No";
                             if (!PQgetisnull(players_result, j, 5)) {
                                 int birth_year = atoi(PQgetvalue(players_result, j, 5));
                                 if (is_og_player(birth_year)) {
-                                    og_status = " (OG)";
+                                    og_status = "Yes";
                                 }
                             }
                             
-                            printf("  %d. %s [%d]%s\n", 
-                                   relative_position, 
+                            printf("  %-8d | %-20s | %-10d | %-15s | %-5s\n", 
+                                   queue_position, 
                                    username, 
                                    user_id,
+                                   team2_score > team1_score ? "win_promoted" : "loss_promoted",
                                    og_status);
                         }
                     }
