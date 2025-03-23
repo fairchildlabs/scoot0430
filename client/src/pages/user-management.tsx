@@ -458,7 +458,7 @@ export default function UserManagementPage() {
     defaultValues: {
       playersPerTeam: 4,
       gym: 'fonde' as const,
-      maxConsecutiveTeamWins: 2,
+      maxConsecutiveGames: 2,
       timeLimit: 15,
       winScore: 21,
       pointSystem: '2s and 3s' as const,
@@ -586,10 +586,10 @@ export default function UserManagementPage() {
 
           <FormField
             control={form.control}
-            name="maxConsecutiveTeamWins"
+            name="maxConsecutiveGames"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Max Consecutive Team Wins</FormLabel>
+                <FormLabel>Max Consecutive Games</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
