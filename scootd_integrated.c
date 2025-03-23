@@ -30,7 +30,7 @@ void checkout_players(PGconn *conn, int argc, char *argv[]);
 void show_player_info(PGconn *conn, const char *username, const char *format);
 void promote_players(PGconn *conn, int game_id, bool promote_winners);
 void list_next_up_players(PGconn *conn, int game_set_id, const char *format);
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format);
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate);
 void finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score);
 void run_sql_query(PGconn *conn, const char *query);
 
@@ -715,34 +715,83 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
 /**
  * Propose a new game without creating it
  */
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format) {
-    char query[1024];
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate) {
+    char query[4096];
     PGresult *res;
     
     // Get game set details
     sprintf(query, 
-            "SELECT current_queue_position FROM game_sets WHERE id = %d",
+            "SELECT id, players_per_team, current_queue_position FROM game_sets WHERE id = %d",
             game_set_id);
     
     res = PQexec(conn, query);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
         fprintf(stderr, "Game set %d not found\n", game_set_id);
         PQclear(res);
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Invalid game_set_id: %d\"\n", game_set_id);
+            printf("}\n");
+        } else {
+            printf("Invalid game_set_id: %d\n", game_set_id);
+        }
         return;
     }
     
-    int current_position = atoi(PQgetvalue(res, 0, 0));
+    int players_per_team = atoi(PQgetvalue(res, 0, 1));
+    int current_position = atoi(PQgetvalue(res, 0, 2));
     PQclear(res);
     
-    // Get next-up players
+    // Check if there are active games on this court for this game set
     sprintf(query, 
-            "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position "
+            "SELECT id FROM games "
+            "WHERE set_id = %d AND court = '%s' AND state IN ('started', 'active')",
+            game_set_id, court);
+    
+    res = PQexec(conn, query);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game check query failed: %s\n", PQerrorMessage(conn));
+        PQclear(res);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"Database error when checking active games\"\n");
+            printf("}\n");
+        } else {
+            printf("Error checking active games: Database error\n");
+        }
+        return;
+    }
+    
+    if (PQntuples(res) > 0) {
+        int game_id = atoi(PQgetvalue(res, 0, 0));
+        PQclear(res);
+        
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"GAME_IN_PROGRESS\",\n");
+            printf("  \"message\": \"Game already in progress on court %s (Game ID: %d)\",\n", court, game_id);
+            printf("  \"game_id\": %d\n", game_id);
+            printf("}\n");
+        } else {
+            printf("Game already in progress on court %s (Game ID: %d)\n", court, game_id);
+        }
+        return;
+    }
+    
+    PQclear(res);
+    
+    // Get available players (not assigned to a game)
+    sprintf(query, 
+            "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type "
             "FROM checkins c "
             "JOIN users u ON c.user_id = u.id "
             "WHERE c.is_active = true "
+            "AND c.game_id IS NULL "
             "AND c.queue_position >= %d "
-            "ORDER BY c.queue_position "
-            "LIMIT 8",
+            "ORDER BY c.queue_position",
             current_position);
     
     res = PQexec(conn, query);
