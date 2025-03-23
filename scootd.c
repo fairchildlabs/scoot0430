@@ -689,6 +689,89 @@ void get_player_info(PGconn *conn, const char *username) {
     PQclear(history_result);
 }
 
+/* Finalize a game with scores */
+int finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score) {
+    /* First check if the game exists and is in 'started' state */
+    const char *game_query = 
+        "SELECT id, state FROM games WHERE id = $1";
+    
+    char game_id_str[16];
+    sprintf(game_id_str, "%d", game_id);
+    const char *game_params[1] = { game_id_str };
+    
+    PGresult *game_result = PQexecParams(conn, game_query, 1, NULL, game_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(game_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Game query failed: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        return 0;
+    }
+    
+    int game_rows = PQntuples(game_result);
+    if (game_rows == 0) {
+        printf("No game found with ID %d\n", game_id);
+        PQclear(game_result);
+        return 0;
+    }
+    
+    const char *state = PQgetvalue(game_result, 0, 1);
+    if (strcmp(state, "started") != 0) {
+        printf("Game #%d is not in 'started' state (current state: %s)\n", game_id, state);
+        if (strcmp(state, "final") == 0) {
+            printf("Game is already finalized. Use the 'promote' command to move players to the queue.\n");
+        }
+        PQclear(game_result);
+        return 0;
+    }
+    
+    /* Update the game with scores and set it to final */
+    const char *update_query = 
+        "UPDATE games SET "
+        "team1_score = $1, "
+        "team2_score = $2, "
+        "end_time = NOW(), "
+        "state = 'final' "
+        "WHERE id = $3 "
+        "RETURNING id";
+    
+    char team1_str[16];
+    char team2_str[16];
+    
+    sprintf(team1_str, "%d", team1_score);
+    sprintf(team2_str, "%d", team2_score);
+    
+    const char *update_params[3] = { team1_str, team2_str, game_id_str };
+    
+    PGresult *update_result = PQexecParams(conn, update_query, 3, NULL, update_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(update_result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to update game: %s\n", PQerrorMessage(conn));
+        PQclear(game_result);
+        PQclear(update_result);
+        return 0;
+    }
+    
+    int updated_id = atoi(PQgetvalue(update_result, 0, 0));
+    
+    printf("Successfully finalized game #%d with score %d-%d\n", 
+           updated_id, team1_score, team2_score);
+    
+    /* Print the game result */
+    printf("Game result: %s\n", 
+           (team1_score == team2_score) ? "Tie game" : 
+           (team1_score > team2_score) ? "Team 1 wins" : "Team 2 wins");
+    
+    printf("\nNext Steps:\n");
+    printf("1. Use 'promote %d win' to move winning team to Next Up queue\n", game_id);
+    printf("2. Use 'promote %d loss' to move losing team to Next Up queue\n", game_id);
+    printf("3. Use 'checkout' to remove players who don't want to continue\n");
+    
+    PQclear(game_result);
+    PQclear(update_result);
+    
+    return updated_id;
+}
+
 /* Handle game promotion (winners or losers) */
 int promote_game_players(PGconn *conn, int game_id, const char *promotion_type) {
     if (strcmp(promotion_type, "win") != 0 && strcmp(promotion_type, "loss") != 0) {
@@ -985,6 +1068,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
         printf("  player <username> - Show detailed information about a player\n");
         printf("  promote <game_id> <win|loss> - Promote winners or losers of the specified game\n");
+        printf("  finalize <game_id> <team1_score> <team2_score> - Finalize a game with the given scores\n");
         printf("  sql \"<sql_query>\" - Run arbitrary SQL query\n");
         return;
     }
@@ -1089,6 +1173,32 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         } else {
             printf("No players were promoted\n");
         }
+    }
+    else if (strcmp(argv[1], "finalize") == 0) {
+        if (argc < 5) {
+            printf("Usage: %s finalize <game_id> <team1_score> <team2_score>\n", argv[0]);
+            return;
+        }
+        
+        int game_id = atoi(argv[2]);
+        if (game_id <= 0) {
+            printf("Invalid game ID: %s\n", argv[2]);
+            return;
+        }
+        
+        int team1_score = atoi(argv[3]);
+        if (team1_score < 0) {
+            printf("Invalid team 1 score: %s (must be non-negative)\n", argv[3]);
+            return;
+        }
+        
+        int team2_score = atoi(argv[4]);
+        if (team2_score < 0) {
+            printf("Invalid team 2 score: %s (must be non-negative)\n", argv[4]);
+            return;
+        }
+        
+        finalize_game(conn, game_id, team1_score, team2_score);
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
