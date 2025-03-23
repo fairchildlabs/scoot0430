@@ -722,7 +722,7 @@ void get_player_info(PGconn *conn, const char *username, const char *format) {
             int team2_score = atoi(PQgetvalue(history_result, i, 5));
             const char *start_time = PQgetvalue(history_result, i, 6);
             
-            const char *end_time = null;
+            const char *end_time = NULL;
             if (!PQgetisnull(history_result, i, 7)) {
                 end_time = PQgetvalue(history_result, i, 7);
             }
