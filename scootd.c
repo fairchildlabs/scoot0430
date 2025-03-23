@@ -14,9 +14,17 @@
 /* Database connection string */
 #define MAX_CONN_INFO_LEN 256
 
+/* Status codes */
+#define STAT_SUCCESS 0
+#define STAT_ERROR_DB -1
+#define STAT_ERROR_INVALID_GAME_SET -2
+#define STAT_ERROR_GAME_IN_PROGRESS -3
+#define STAT_ERROR_NOT_ENOUGH_PLAYERS -4
+#define STAT_ERROR_INVALID_FORMAT -5
+
 /* Function prototypes */
 void get_next_up_players(PGconn *conn, int game_set_id, const char *format);
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format);
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate);
 
 /* Error handling helper */
 void handle_error(const char *message, PGconn *conn) 
@@ -1305,7 +1313,7 @@ int checkout_player(PGconn *conn, int queue_position) {
 }
 
 /* Function to propose a game without creating it */
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format) {
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate) {
     // First check if the game set exists
     const char *check_game_set_query = "SELECT id, players_per_team FROM game_sets WHERE id = $1";
     
@@ -1597,6 +1605,249 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                        position, username, userId, type, og_str);
             }
         }
+    }
+    
+    // Create the game if requested
+    int game_id = 0;
+    int stat = STAT_SUCCESS;
+    
+    if (bCreate) {
+        // Begin a transaction
+        PGresult *tx_result = PQexec(conn, "BEGIN");
+        if (PQresultStatus(tx_result) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "BEGIN command failed: %s\n", PQerrorMessage(conn));
+            PQclear(tx_result);
+            PQclear(players_result);
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Database error starting transaction\",\n");
+                printf("  \"game_id\": -1,\n");
+                printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                printf("}\n");
+            } else {
+                printf("Error starting transaction for game creation\n");
+            }
+            return;
+        }
+        PQclear(tx_result);
+
+        // Create the game
+        const char *create_game_query = 
+            "INSERT INTO games (set_id, start_time, court, state, club_index) "
+            "VALUES ($1, NOW(), $2, 'pending', "
+            "(SELECT club_index FROM game_sets WHERE id = $1)) "
+            "RETURNING id";
+        
+        const char *game_params[2] = { set_id_str, court };
+        PGresult *game_create_result = PQexecParams(conn, create_game_query, 2, NULL, game_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(game_create_result) != PGRES_TUPLES_OK) {
+            fprintf(stderr, "Game creation failed: %s\n", PQerrorMessage(conn));
+            PQclear(game_create_result);
+            
+            // Roll back the transaction
+            PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+            PQclear(rollback_result);
+            
+            PQclear(players_result);
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Database error creating game\",\n");
+                printf("  \"game_id\": -1,\n");
+                printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                printf("}\n");
+            } else {
+                printf("Error creating game: Database error\n");
+            }
+            return;
+        }
+        
+        // Get the created game ID
+        game_id = atoi(PQgetvalue(game_create_result, 0, 0));
+        PQclear(game_create_result);
+        
+        // Add players to the game
+        for (int i = 0; i < players_per_team * 2; i++) {
+            int user_id = atoi(PQgetvalue(players_result, i, 2));
+            int team = (i < players_per_team) ? 1 : 2;
+            int relative_position = (i < players_per_team) ? (i + 1) : (i - players_per_team + 1);
+            
+            char user_id_str[16];
+            char team_str[2];
+            char game_id_str[16];
+            char relative_pos_str[16];
+            
+            sprintf(user_id_str, "%d", user_id);
+            sprintf(team_str, "%d", team);
+            sprintf(game_id_str, "%d", game_id);
+            sprintf(relative_pos_str, "%d", relative_position);
+            
+            const char *player_params[4] = { game_id_str, user_id_str, team_str, relative_pos_str };
+            
+            const char *add_player_query = 
+                "INSERT INTO game_players (game_id, user_id, team, relative_position) "
+                "VALUES ($1, $2, $3, $4)";
+            
+            PGresult *player_add_result = PQexecParams(conn, add_player_query, 4, NULL, player_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(player_add_result) != PGRES_COMMAND_OK) {
+                fprintf(stderr, "Player addition failed: %s\n", PQerrorMessage(conn));
+                PQclear(player_add_result);
+                
+                // Roll back the transaction
+                PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+                PQclear(rollback_result);
+                
+                PQclear(players_result);
+                
+                if (strcmp(format, "json") == 0) {
+                    printf("{\n");
+                    printf("  \"status\": \"ERROR\",\n");
+                    printf("  \"message\": \"Database error adding players to game\",\n");
+                    printf("  \"game_id\": -1,\n");
+                    printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                    printf("}\n");
+                } else {
+                    printf("Error adding players to game: Database error\n");
+                }
+                return;
+            }
+            PQclear(player_add_result);
+            
+            // Update the checkin's game_id and team
+            const char *update_checkin_query = 
+                "UPDATE checkins "
+                "SET game_id = $1, team = $2 "
+                "WHERE user_id = $3 AND is_active = true AND game_set_id = $4";
+            
+            const char *checkin_params[4] = { game_id_str, team_str, user_id_str, set_id_str };
+            
+            PGresult *checkin_update_result = PQexecParams(conn, update_checkin_query, 4, NULL, 
+                                                        checkin_params, NULL, NULL, 0);
+            
+            if (PQresultStatus(checkin_update_result) != PGRES_COMMAND_OK) {
+                fprintf(stderr, "Checkin update failed: %s\n", PQerrorMessage(conn));
+                PQclear(checkin_update_result);
+                
+                // Roll back the transaction
+                PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+                PQclear(rollback_result);
+                
+                PQclear(players_result);
+                
+                if (strcmp(format, "json") == 0) {
+                    printf("{\n");
+                    printf("  \"status\": \"ERROR\",\n");
+                    printf("  \"message\": \"Database error updating checkins\",\n");
+                    printf("  \"game_id\": -1,\n");
+                    printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                    printf("}\n");
+                } else {
+                    printf("Error updating checkins: Database error\n");
+                }
+                return;
+            }
+            PQclear(checkin_update_result);
+        }
+        
+        // Update the current_queue_position in game_sets
+        int new_queue_position = atoi(PQgetvalue(players_result, (players_per_team * 2) - 1, 0)) + 1;
+        
+        char new_pos_str[16];
+        sprintf(new_pos_str, "%d", new_queue_position);
+        
+        const char *update_game_set_query = 
+            "UPDATE game_sets "
+            "SET current_queue_position = $1 "
+            "WHERE id = $2";
+        
+        const char *pos_params[2] = { new_pos_str, set_id_str };
+        
+        PGresult *pos_update_result = PQexecParams(conn, update_game_set_query, 2, NULL, pos_params, NULL, NULL, 0);
+        
+        if (PQresultStatus(pos_update_result) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "Game set update failed: %s\n", PQerrorMessage(conn));
+            PQclear(pos_update_result);
+            
+            // Roll back the transaction
+            PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+            PQclear(rollback_result);
+            
+            PQclear(players_result);
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Database error updating game set\",\n");
+                printf("  \"game_id\": -1,\n");
+                printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                printf("}\n");
+            } else {
+                printf("Error updating game set: Database error\n");
+            }
+            return;
+        }
+        PQclear(pos_update_result);
+        
+        // Commit the transaction
+        PGresult *commit_result = PQexec(conn, "COMMIT");
+        if (PQresultStatus(commit_result) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "COMMIT command failed: %s\n", PQerrorMessage(conn));
+            PQclear(commit_result);
+            
+            // Roll back the transaction
+            PGresult *rollback_result = PQexec(conn, "ROLLBACK");
+            PQclear(rollback_result);
+            
+            PQclear(players_result);
+            
+            if (strcmp(format, "json") == 0) {
+                printf("{\n");
+                printf("  \"status\": \"ERROR\",\n");
+                printf("  \"message\": \"Database error committing transaction\",\n");
+                printf("  \"game_id\": -1,\n");
+                printf("  \"stat\": %d\n", STAT_ERROR_DB);
+                printf("}\n");
+            } else {
+                printf("Error committing transaction: Database error\n");
+            }
+            return;
+        }
+        PQclear(commit_result);
+        
+        // Show success message with created game ID
+        if (strcmp(format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"SUCCESS\",\n");
+            printf("  \"message\": \"Game created successfully\",\n");
+            printf("  \"game_id\": %d,\n", game_id);
+            printf("  \"game_set_id\": %d,\n", game_set_id);
+            printf("  \"court\": \"%s\",\n", court);
+            printf("  \"players_per_team\": %d,\n", players_per_team);
+            printf("  \"new_queue_position\": %d,\n", new_queue_position);
+            printf("  \"stat\": %d\n", STAT_SUCCESS);
+            printf("}\n");
+        } else {
+            printf("\nGame created successfully!\n");
+            printf("Game ID: %d\n", game_id);
+            printf("Court: %s\n", court);
+            printf("New queue position: %d\n", new_queue_position);
+        }
+    } 
+    // Update the JSON output for propose-game to include the stat and game_id fields
+    else if (strcmp(format, "json") == 0) {
+        // Find the second-to-last closing brace and add the new fields before it
+        char *last_json_line = strdup("]");  // This is the last line of the existing JSON
+        
+        printf("  \"game_id\": 0,\n");
+        printf("  \"stat\": %d\n", STAT_SUCCESS);
+        printf("%s\n", last_json_line);
+        
+        free(last_json_line);
     }
     
     PQclear(players_result);
