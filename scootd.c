@@ -38,7 +38,8 @@ void run_sql_query(PGconn *conn, const char *query);
 /* Function prototypes - from enhanced scootd */
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
 void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote);
-bool team_compare(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
+bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
+bool team_compare(PGconn *conn, int game_id1, int game_id2);
 
 /**
  * Connect to the PostgreSQL database using environment variables
@@ -1816,11 +1817,11 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
 }
 
 /**
- * Compare two teams to see if they are the same
+ * Compare two specific teams to see if they are the same
  * For now, teams are the same if all players are the same
  * Returns true if teams are the same, false otherwise
  */
-bool team_compare(PGconn *conn, int game1_id, int team1, int game2_id, int team2) {
+bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2) {
     char query[4096];
     PGresult *res;
     
@@ -2229,74 +2230,11 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
  * Compare two teams to see if they are the same
  * Returns true if all players are the same on both teams
  */
+// Legacy version that uses the more specific team_compare_specific function
 bool team_compare(PGconn *conn, int game_id1, int game_id2) {
-    char query[512];
-    
-    // Get team 1 from game 1
-    sprintf(query, 
-            "SELECT array_agg(user_id ORDER BY user_id) AS players "
-            "FROM game_players "
-            "WHERE game_id = %d AND team = 1",
-            game_id1);
-    
-    PGresult *res1 = PQexec(conn, query);
-    if (PQresultStatus(res1) != PGRES_TUPLES_OK || PQntuples(res1) == 0) {
-        PQclear(res1);
-        return false;
-    }
-    
-    // Get team 1 from game 2
-    sprintf(query, 
-            "SELECT array_agg(user_id ORDER BY user_id) AS players "
-            "FROM game_players "
-            "WHERE game_id = %d AND team = 1",
-            game_id2);
-    
-    PGresult *res2 = PQexec(conn, query);
-    if (PQresultStatus(res2) != PGRES_TUPLES_OK || PQntuples(res2) == 0) {
-        PQclear(res1);
-        PQclear(res2);
-        return false;
-    }
-    
-    // Check if teams are the same
-    bool same_team1 = (strcmp(PQgetvalue(res1, 0, 0), PQgetvalue(res2, 0, 0)) == 0);
-    
-    PQclear(res1);
-    PQclear(res2);
-    
-    // Get team 2 from game 1
-    sprintf(query, 
-            "SELECT array_agg(user_id ORDER BY user_id) AS players "
-            "FROM game_players "
-            "WHERE game_id = %d AND team = 2",
-            game_id1);
-    
-    res1 = PQexec(conn, query);
-    if (PQresultStatus(res1) != PGRES_TUPLES_OK || PQntuples(res1) == 0) {
-        PQclear(res1);
-        return false;
-    }
-    
-    // Get team 2 from game 2
-    sprintf(query, 
-            "SELECT array_agg(user_id ORDER BY user_id) AS players "
-            "FROM game_players "
-            "WHERE game_id = %d AND team = 2",
-            game_id2);
-    
-    res2 = PQexec(conn, query);
-    if (PQresultStatus(res2) != PGRES_TUPLES_OK || PQntuples(res2) == 0) {
-        PQclear(res1);
-        PQclear(res2);
-        return false;
-    }
-    
-    // Check if teams are the same
-    bool same_team2 = (strcmp(PQgetvalue(res1, 0, 0), PQgetvalue(res2, 0, 0)) == 0);
-    
-    PQclear(res1);
-    PQclear(res2);
+    // Compare both teams (team 1 to team 1 and team 2 to team 2)
+    bool same_team1 = team_compare_specific(conn, game_id1, 1, game_id2, 1);
+    bool same_team2 = team_compare_specific(conn, game_id1, 2, game_id2, 2);
     
     // Teams are the same if both team 1 and team 2 are the same
     return same_team1 && same_team2;
