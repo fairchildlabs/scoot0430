@@ -358,17 +358,17 @@ export default function UserManagementPage() {
    enabled: !!user?.isEngineer || !!user?.isRoot,
  });
 
- const { data: checkins = [] } = useQuery({
+ const { data: checkins = [] as any[] } = useQuery({
    queryKey: ["/api/checkins"],
    enabled: !!user?.isEngineer || !!user?.isRoot,
  });
 
  // Memoized values
  const checkedInUserIds = useMemo(() => {
-   return new Set((checkins || []).map((checkin: any) => checkin.userId));
+   return new Set((checkins as any[] || []).map((checkin: any) => checkin.userId));
  }, [checkins]);
 
- const { items: sortedPlayers, requestSort, sortConfig } = useSortableData(players);
+ const { items: sortedPlayers, requestSort, sortConfig } = useSortableData(players as any[]);
 
  const filteredPlayers = useMemo(() => {
    if (!searchQuery.trim()) return sortedPlayers;
@@ -708,7 +708,7 @@ export default function UserManagementPage() {
                      </TableRow>
                    </TableHeader>
                    <TableBody>
-                     {checkins?.map((checkin: any, index: number) => (
+                     {(checkins as any[])?.map((checkin: any, index: number) => (
                        <TableRow key={checkin.id}>
                          <TableCell>{index + 1}</TableCell>
                          <TableCell>{checkin.username}</TableCell>
@@ -717,7 +717,7 @@ export default function UserManagementPage() {
                          </TableCell>
                        </TableRow>
                      ))}
-                     {(!checkins || checkins.length === 0) && (
+                     {(!checkins || (checkins as any[]).length === 0) && (
                        <TableRow>
                          <TableCell colSpan={3} className="text-center text-muted-foreground">
                            No players checked in

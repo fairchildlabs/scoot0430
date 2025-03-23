@@ -24,11 +24,11 @@ const isReplitEnv = true; // Always show in Replit UI for development
 
 // Update the GameSetLog component to show checkin type
 function GameSetLog() {
-  const { data: activeGameSet = { id: 0 } } = useQuery({
+  const { data: activeGameSet = { id: 0 } } = useQuery<{ id: number }>({
     queryKey: ["/api/game-sets/active"],
   });
 
-  const { data: gameSetLog = [] } = useQuery({
+  const { data: gameSetLog = [] } = useQuery<any[]>({
     queryKey: [`/api/game-sets/${activeGameSet.id}/log`],
     enabled: !!activeGameSet.id,
   });
