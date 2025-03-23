@@ -735,7 +735,6 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                             int team = atoi(PQgetvalue(players_result, j, 0));
                             if (team != 1) continue;
                             
-                            /* Not used: int relative_position */ = atoi(PQgetvalue(players_result, j, 1));
                             int queue_position = atoi(PQgetvalue(players_result, j, 2));
                             const char *username = PQgetvalue(players_result, j, 3);
                             int user_id = atoi(PQgetvalue(players_result, j, 4));
@@ -766,7 +765,6 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                             int team = atoi(PQgetvalue(players_result, j, 0));
                             if (team != 2) continue;
                             
-                            /* Not used: int relative_position */ = atoi(PQgetvalue(players_result, j, 1));
                             int queue_position = atoi(PQgetvalue(players_result, j, 2));
                             const char *username = PQgetvalue(players_result, j, 3);
                             int user_id = atoi(PQgetvalue(players_result, j, 4));
