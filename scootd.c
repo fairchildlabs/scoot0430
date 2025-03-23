@@ -13,6 +13,9 @@
 /* Database connection string */
 #define MAX_CONN_INFO_LEN 256
 
+/* Function prototypes */
+void get_next_up_players(PGconn *conn, int game_set_id, const char *format);
+
 /* Error handling helper */
 void handle_error(const char *message, PGconn *conn) {
     fprintf(stderr, "ERROR: %s\n", message);
@@ -1379,6 +1382,42 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         }
         
         finalize_game(conn, game_id, team1_score, team2_score);
+    }
+    else if (strcmp(argv[1], "next-up") == 0) {
+        int game_set_id = 0;
+        const char *format = "text";
+        
+        // If game_set_id is provided
+        if (argc >= 3) {
+            game_set_id = atoi(argv[2]);
+            // Check if it's a valid number
+            if (game_set_id <= 0) {
+                // Maybe it's a format string instead
+                if (strcmp(argv[2], "json") == 0 || strcmp(argv[2], "text") == 0) {
+                    format = argv[2];
+                    game_set_id = get_active_game_set_id(conn);
+                } else {
+                    printf("Invalid game set ID: %s\n", argv[2]);
+                    return;
+                }
+            } else if (argc >= 4) {
+                // Both game_set_id and format are provided
+                format = argv[3];
+                if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
+                    printf("Invalid format: %s (must be 'text' or 'json')\n", format);
+                    return;
+                }
+            }
+        } else {
+            // Use active game set if none provided
+            game_set_id = get_active_game_set_id(conn);
+        }
+        
+        if (game_set_id > 0) {
+            get_next_up_players(conn, game_set_id, format);
+        } else {
+            printf("No active game set found and no game set ID provided\n");
+        }
     }
     else if (strcmp(argv[1], "sql") == 0) {
         if (argc < 3) {
