@@ -761,6 +761,8 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     
     // Format: json or text
     if (strcmp(format, "json") == 0) {
+
+        
         printf("{\n");
         printf("  \"game_set_id\": %d,\n", game_set_id);
         printf("  \"court\": \"%s\",\n", court);
