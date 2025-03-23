@@ -994,8 +994,8 @@ int end_game(PGconn *conn, int game_id, int home_score, int away_score, bool aut
         }
         
         int max_consecutive_games = atoi(PQgetvalue(set_config_result, 0, 0));
-        int players_per_team = atoi(PQgetvalue(set_config_result, 0, 1));
-        int current_queue_position = atoi(PQgetvalue(set_config_result, 0, 2));
+        /* Not used: int players_per_team = atoi(PQgetvalue(set_config_result, 0, 1)); */
+        /* Not used: int current_queue_position = atoi(PQgetvalue(set_config_result, 0, 2)); */
         int queue_next_up = atoi(PQgetvalue(set_config_result, 0, 3));
         
         /* Determine winning team */
