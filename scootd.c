@@ -3209,7 +3209,7 @@ void process_command(PGconn *conn, int argc, char *argv[]) {
         }
         
         printf("Note: 'finalize' command is deprecated. Please use 'end-game' instead.\n");
-        finalize_game(conn, game_id, home_score, away_score);
+        finalize_game(conn, game_id, home_score, away_score, true); // Default to autopromote=true
     }
     else if (strcmp(argv[1], "next-up") == 0) {
         int game_set_id = 0;
