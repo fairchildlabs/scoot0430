@@ -2018,36 +2018,30 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         const char *player_array = PQgetvalue(res, 0, 0);
         PQclear(res);
         
-        // Get the previous games with same players on winning team
-        // Look for games where the same players were on the winning team
-        // and won the game
+        // Get the previous games with the same team
+        // Count number of times this exact team has played, win or lose
+        // This is to enforce max_consecutive_games correctly
         sprintf(query, 
-                "WITH winning_games AS ( "
+                "WITH game_teams AS ( "
                 "  SELECT g.id, "
+                "         array_agg(user_id) FILTER (WHERE team = 1) AS team1_players, "
+                "         array_agg(user_id) FILTER (WHERE team = 2) AS team2_players, "
                 "         (CASE "
                 "           WHEN g.team1_score > g.team2_score THEN 1 "
                 "           WHEN g.team2_score > g.team1_score THEN 2 "
                 "           ELSE (CASE WHEN RANDOM() < 0.5 THEN 1 ELSE 2 END) "
                 "         END) AS winning_team "
                 "  FROM games g "
+                "  JOIN game_players gp ON g.id = gp.game_id "
                 "  WHERE g.set_id = %d "
                 "  AND g.state = 'completed' "
-                "  AND g.id != %d "
+                "  AND g.id < %d " // Only count games before this one
+                "  GROUP BY g.id, g.team1_score, g.team2_score "
                 "  ORDER BY g.id DESC "
                 ") "
                 "SELECT COUNT(*) "
-                "FROM winning_games wg "
-                "JOIN ( "
-                "  SELECT g.id, "
-                "         array_agg(user_id) FILTER (WHERE team = 1) AS team1_players, "
-                "         array_agg(user_id) FILTER (WHERE team = 2) AS team2_players "
-                "  FROM games g "
-                "  JOIN game_players gp ON g.id = gp.game_id "
-                "  WHERE g.id IN (SELECT id FROM winning_games) "
-                "  GROUP BY g.id "
-                ") teams ON wg.id = teams.id "
-                "WHERE (wg.winning_team = 1 AND teams.team1_players && '%s'::int[]) "
-                "   OR (wg.winning_team = 2 AND teams.team2_players && '%s'::int[])",
+                "FROM game_teams gt "
+                "WHERE (gt.team1_players = '%s'::int[] OR gt.team2_players = '%s'::int[])",
                 set_id, game_id, player_array, player_array);
         
         res = PQexec(conn, query);
@@ -2058,25 +2052,25 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             return;
         }
         
-        int consecutive_wins = atoi(PQgetvalue(res, 0, 0)) + 1; // +1 for the current game
-        printf("Team has won %d consecutive games (including current)\n", consecutive_wins);
+        int consecutive_games = atoi(PQgetvalue(res, 0, 0)) + 1; // +1 for the current game
+        printf("Team has played %d consecutive games (including current)\n", consecutive_games);
         PQclear(res);
         
         // Determine which team to promote
         int team_to_promote;
         char promotion_type[32]; // Use a buffer to store the promotion type with win count
         
-        if (consecutive_wins < max_consecutive_games) {
+        if (consecutive_games < max_consecutive_games) {
             team_to_promote = winning_team;
-            // Store the consecutive win count in the promotion type
-            sprintf(promotion_type, "win_promoted:%d", consecutive_wins);
-            printf("Winning team has played %d consecutive games (max: %d) - promoting winners\n", 
-                   consecutive_wins, max_consecutive_games);
+            // Store the consecutive game count in the promotion type
+            sprintf(promotion_type, "win_promoted:%d", consecutive_games);
+            printf("Team has played %d consecutive games (max: %d) - promoting winners\n", 
+                   consecutive_games, max_consecutive_games);
         } else {
             team_to_promote = losing_team;
-            // Store the consecutive win count in the promotion type
-            sprintf(promotion_type, "loss_promoted:%d", consecutive_wins);
-            printf("Winning team has reached max consecutive games (%d) - promoting losers\n", 
+            // Store the consecutive game count in the promotion type
+            sprintf(promotion_type, "loss_promoted:%d", consecutive_games);
+            printf("Team has reached max consecutive games (%d) - promoting losers\n", 
                    max_consecutive_games);
         }
         
@@ -2263,9 +2257,9 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     
                     char insert_query[512];
                     
-                    // Create autoup type with win count, e.g., "autoup:2" for players from a team with 2 wins
+                    // Create autoup type with consecutive game count, e.g., "autoup:2" for players from a team with 2 games
                     char autoup_type[32];
-                    sprintf(autoup_type, "autoup:%d", consecutive_wins);
+                    sprintf(autoup_type, "autoup:%d", consecutive_games);
                     
                     sprintf(insert_query, 
                             "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
