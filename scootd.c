@@ -2324,6 +2324,9 @@ bool team_compare(PGconn *conn, int game_id1, int game_id2) {
 /**
  * New implementation of team_compare that compares player arrays
  * Returns true if the player arrays are identical
+ * 
+ * This implementation creates local copies of the arrays before sorting,
+ * ensuring that the original arrays are not modified during comparison.
  */
 bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size) {
     // If team sizes are different, they can't be the same team
@@ -2331,30 +2334,42 @@ bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, in
         return false;
     }
     
+    // Create copies of the arrays to sort without modifying originals
+    int team1_sorted[team1_size];
+    int team2_sorted[team2_size];
+    
+    for (int i = 0; i < team1_size; i++) {
+        team1_sorted[i] = team1_players[i];
+    }
+    
+    for (int i = 0; i < team2_size; i++) {
+        team2_sorted[i] = team2_players[i];
+    }
+    
     // Sort player IDs for easy comparison
     for (int i = 0; i < team1_size - 1; i++) {
         for (int j = 0; j < team1_size - i - 1; j++) {
-            if (team1_players[j] > team1_players[j + 1]) {
-                int temp = team1_players[j];
-                team1_players[j] = team1_players[j + 1];
-                team1_players[j + 1] = temp;
+            if (team1_sorted[j] > team1_sorted[j + 1]) {
+                int temp = team1_sorted[j];
+                team1_sorted[j] = team1_sorted[j + 1];
+                team1_sorted[j + 1] = temp;
             }
         }
     }
     
     for (int i = 0; i < team2_size - 1; i++) {
         for (int j = 0; j < team2_size - i - 1; j++) {
-            if (team2_players[j] > team2_players[j + 1]) {
-                int temp = team2_players[j];
-                team2_players[j] = team2_players[j + 1];
-                team2_players[j + 1] = temp;
+            if (team2_sorted[j] > team2_sorted[j + 1]) {
+                int temp = team2_sorted[j];
+                team2_sorted[j] = team2_sorted[j + 1];
+                team2_sorted[j + 1] = temp;
             }
         }
     }
     
     // Compare each player ID
     for (int i = 0; i < team1_size; i++) {
-        if (team1_players[i] != team2_players[i]) {
+        if (team1_sorted[i] != team2_sorted[i]) {
             return false;
         }
     }
