@@ -697,12 +697,25 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
                 int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
                 bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
                 
-                printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+                // Check if this is an autoup player with win count
+                char display_type[32];
+                strncpy(display_type, checkin_type, sizeof(display_type) - 1);
+                display_type[sizeof(display_type) - 1] = '\0';
+                
+                // If the type starts with "autoup:" format it as "autoup (win streak: X)"
+                if (strncmp(checkin_type, "autoup:", 7) == 0) {
+                    int win_count = atoi(checkin_type + 7);
+                    sprintf(display_type, "autoup (%d win%s)", 
+                            win_count, 
+                            win_count == 1 ? "" : "s");
+                }
+                
+                printf("%-3d | %-20s | %-3d | %-3s | %-20s\n", 
                        position, 
                        username, 
                        user_id,
                        is_og ? "Yes" : "No",
-                       checkin_type);
+                       display_type);
             }
         }
     }
@@ -866,8 +879,8 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         printf("=== Proposed Game (Game Set %d, Court: %s) ===\n\n", game_set_id, court);
         
         printf("HOME TEAM:\n");
-        printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
-        printf("--------------------------------------------------\n");
+        printf("%-3s | %-20s | %-3s | %-3s | %-20s\n", "Pos", "Username", "UID", "OG", "Type");
+        printf("---------------------------------------------------------\n");
         
         for (int i = 0; i < 4; i++) {
             int user_id = atoi(PQgetvalue(res, i, 1));
@@ -879,17 +892,30 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
-            printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+            // Check if this is an autoup player with win count
+            char display_type[32];
+            strncpy(display_type, checkin_type, sizeof(display_type) - 1);
+            display_type[sizeof(display_type) - 1] = '\0';
+            
+            // If the type starts with "autoup:" format it as "autoup (win streak: X)"
+            if (strncmp(checkin_type, "autoup:", 7) == 0) {
+                int win_count = atoi(checkin_type + 7);
+                sprintf(display_type, "autoup (%d win%s)", 
+                        win_count, 
+                        win_count == 1 ? "" : "s");
+            }
+            
+            printf("%-3d | %-20s | %-3d | %-3s | %-20s\n", 
                    position,
                    username,
                    user_id,
                    is_og ? "Yes" : "No",
-                   checkin_type);
+                   display_type);
         }
         
         printf("\nAWAY TEAM:\n");
-        printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
-        printf("--------------------------------------------------\n");
+        printf("%-3s | %-20s | %-3s | %-3s | %-20s\n", "Pos", "Username", "UID", "OG", "Type");
+        printf("---------------------------------------------------------\n");
         
         for (int i = 4; i < 8; i++) {
             int user_id = atoi(PQgetvalue(res, i, 1));
@@ -901,12 +927,25 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
-            printf("%-3d | %-20s | %-3d | %-3s | %-10s\n", 
+            // Check if this is an autoup player with win count
+            char display_type[32];
+            strncpy(display_type, checkin_type, sizeof(display_type) - 1);
+            display_type[sizeof(display_type) - 1] = '\0';
+            
+            // If the type starts with "autoup:" format it as "autoup (win streak: X)"
+            if (strncmp(checkin_type, "autoup:", 7) == 0) {
+                int win_count = atoi(checkin_type + 7);
+                sprintf(display_type, "autoup (%d win%s)", 
+                        win_count, 
+                        win_count == 1 ? "" : "s");
+            }
+            
+            printf("%-3d | %-20s | %-3d | %-3s | %-20s\n", 
                    position,
                    username,
                    user_id,
                    is_og ? "Yes" : "No",
-                   checkin_type);
+                   display_type);
         }
     }
     
@@ -1742,8 +1781,15 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                 
                 PGresult *player_res = PQexec(conn, player_query);
                 if (PQresultStatus(player_res) == PGRES_TUPLES_OK) {
-                    // Print HOME team
-                    printf("\nHOME TEAM:\n");
+                    // Print HOME team with win/loss/tie indicator
+                    const char* homeResult;
+                    if (team1_score > team2_score) 
+                        homeResult = "(WIN)";
+                    else if (team1_score < team2_score)
+                        homeResult = "(LOSS)";
+                    else
+                        homeResult = "(TIE)";
+                    printf("\nHOME TEAM: %s\n", homeResult);
                     printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
                     printf("--------------------------------------------------\n");
                     
@@ -1774,8 +1820,15 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                         printf("No HOME team players found\n");
                     }
                     
-                    // Print AWAY team
-                    printf("\nAWAY TEAM:\n");
+                    // Print AWAY team with win/loss/tie indicator
+                    const char* awayResult;
+                    if (team1_score < team2_score) 
+                        awayResult = "(WIN)";
+                    else if (team1_score > team2_score)
+                        awayResult = "(LOSS)";
+                    else
+                        awayResult = "(TIE)";
+                    printf("\nAWAY TEAM: %s\n", awayResult);
                     printf("%-3s | %-20s | %-3s | %-3s | %-10s\n", "Pos", "Username", "UID", "OG", "Type");
                     printf("--------------------------------------------------\n");
                     
@@ -1924,9 +1977,23 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
     PQclear(res);
     
     if (autopromote) {
-        // Determine winning team (1 = HOME, 2 = AWAY)
-        int winning_team = home_score > away_score ? 1 : 2;
-        int losing_team = winning_team == 1 ? 2 : 1;
+        // Determine winning team (1 = HOME, 2 = AWAY, 0 = TIE)
+        int winning_team = 0;
+        int losing_team = 0;
+        
+        if (home_score > away_score) {
+            winning_team = 1;
+            losing_team = 2;
+        } else if (away_score > home_score) {
+            winning_team = 2;
+            losing_team = 1;
+        } else {
+            // In case of a tie, randomly select a team to be "winning" for promotion purposes
+            // Using time as a simple randomizer
+            winning_team = (time(NULL) % 2) + 1;
+            losing_team = winning_team == 1 ? 2 : 1;
+            printf("Game ended in a tie. Randomly selecting Team %d for promotion logic.\n", winning_team);
+        }
         
         // Count consecutive wins for winning team
         // First, get the player IDs for the winning team
@@ -1954,7 +2021,11 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         sprintf(query, 
                 "WITH winning_games AS ( "
                 "  SELECT g.id, "
-                "         (CASE WHEN g.team1_score > g.team2_score THEN 1 ELSE 2 END) AS winning_team "
+                "         (CASE "
+                "           WHEN g.team1_score > g.team2_score THEN 1 "
+                "           WHEN g.team2_score > g.team1_score THEN 2 "
+                "           ELSE (CASE WHEN RANDOM() < 0.5 THEN 1 ELSE 2 END) "
+                "         END) AS winning_team "
                 "  FROM games g "
                 "  WHERE g.set_id = %d "
                 "  AND g.state = 'completed' "
@@ -1990,16 +2061,18 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         
         // Determine which team to promote
         int team_to_promote;
-        const char *promotion_type;
+        char promotion_type[32]; // Use a buffer to store the promotion type with win count
         
         if (consecutive_wins < max_consecutive_games) {
             team_to_promote = winning_team;
-            promotion_type = "win_promoted";
+            // Store the consecutive win count in the promotion type
+            sprintf(promotion_type, "win_promoted:%d", consecutive_wins);
             printf("Winning team has played %d consecutive games (max: %d) - promoting winners\n", 
                    consecutive_wins, max_consecutive_games);
         } else {
             team_to_promote = losing_team;
-            promotion_type = "loss_promoted";
+            // Store the consecutive win count in the promotion type
+            sprintf(promotion_type, "loss_promoted:%d", consecutive_wins);
             printf("Winning team has reached max consecutive games (%d) - promoting losers\n", 
                    max_consecutive_games);
         }
@@ -2186,11 +2259,16 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     PQclear(update_next_up);
                     
                     char insert_query[512];
+                    
+                    // Create autoup type with win count, e.g., "autoup:2" for players from a team with 2 wins
+                    char autoup_type[32];
+                    sprintf(autoup_type, "autoup:%d", consecutive_wins);
+                    
                     sprintf(insert_query, 
                             "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
-                            "VALUES (%d, %d, 34, %d, true, 'autoup', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
+                            "VALUES (%d, %d, 34, %d, true, '%s', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                             "RETURNING id",
-                            user_id, set_id, current_position);
+                            user_id, set_id, current_position, autoup_type);
                     
                     PGresult *insert_res = PQexec(conn, insert_query);
                     if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
