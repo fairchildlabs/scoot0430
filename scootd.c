@@ -39,6 +39,7 @@ void run_sql_query(PGconn *conn, const char *query);
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
 void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote);
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
+bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size);
 
 /**
  * Connect to the PostgreSQL database using environment variables
@@ -2316,6 +2317,47 @@ bool team_compare(PGconn *conn, int game_id1, int game_id2) {
     
     // Teams are the same if both team 1 and team 2 are the same
     return same_team1 && same_team2;
+}
+
+/**
+ * New implementation of team_compare that compares player arrays
+ * Returns true if the player arrays are identical
+ */
+bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size) {
+    // If team sizes are different, they can't be the same team
+    if (team1_size != team2_size) {
+        return false;
+    }
+    
+    // Sort player IDs for easy comparison
+    for (int i = 0; i < team1_size - 1; i++) {
+        for (int j = 0; j < team1_size - i - 1; j++) {
+            if (team1_players[j] > team1_players[j + 1]) {
+                int temp = team1_players[j];
+                team1_players[j] = team1_players[j + 1];
+                team1_players[j + 1] = temp;
+            }
+        }
+    }
+    
+    for (int i = 0; i < team2_size - 1; i++) {
+        for (int j = 0; j < team2_size - i - 1; j++) {
+            if (team2_players[j] > team2_players[j + 1]) {
+                int temp = team2_players[j];
+                team2_players[j] = team2_players[j + 1];
+                team2_players[j + 1] = temp;
+            }
+        }
+    }
+    
+    // Compare each player ID
+    for (int i = 0; i < team1_size; i++) {
+        if (team1_players[i] != team2_players[i]) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 int main(int argc, char *argv[]) {
