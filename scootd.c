@@ -2056,11 +2056,38 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         printf("Team has played %d consecutive games (including current)\n", consecutive_games);
         PQclear(res);
         
+        // Check if any players in the winning team were previously loss_promoted
+        // This would indicate they should now go to autoup instead of being win_promoted again
+        bool winning_team_was_previously_loss_promoted = false;
+        
+        // Get the player IDs for the winning team and their previous check-in types
+        sprintf(query, 
+                "SELECT COUNT(*) FROM checkins c "
+                "JOIN game_players gp ON gp.user_id = c.user_id AND gp.game_id = %d "
+                "WHERE gp.team = %d AND c.type LIKE 'loss_promoted%%' "
+                "AND c.is_active = true",
+                game_id, winning_team);
+                
+        res = PQexec(conn, query);
+        if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+            int match_count = atoi(PQgetvalue(res, 0, 0));
+            if (match_count > 0) {
+                winning_team_was_previously_loss_promoted = true;
+                printf("Winning team was previously loss_promoted (found %d matching players)\n", match_count);
+            }
+        }
+        PQclear(res);
+        
         // Determine which team to promote
         int team_to_promote;
         char promotion_type[32]; // Use a buffer to store the promotion type with win count
         
-        if (consecutive_games < max_consecutive_games) {
+        if (winning_team_was_previously_loss_promoted) {
+            // If winning team was previously loss_promoted, now promote the losing team
+            team_to_promote = losing_team;
+            sprintf(promotion_type, "loss_promoted:%d", consecutive_games);
+            printf("Winning team was previously loss_promoted - now promoting losers\n");
+        } else if (consecutive_games < max_consecutive_games) {
             team_to_promote = winning_team;
             // Store the consecutive game count in the promotion type
             sprintf(promotion_type, "win_promoted:%d", consecutive_games);
@@ -2192,19 +2219,37 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         }
         PQclear(update_next_up_res);
         
-        // Get players from the non-promoted team who have autoup=true
+        // Get players from the non-promoted team who have autoup=true or were previously loss_promoted
         // This will be the winning team if we're doing loss promotion
         // or the losing team if we're doing win promotion
+        // Special case: if winning team was previously loss_promoted, they should now autoup
         int team_with_autoup = (team_to_promote == losing_team) ? winning_team : losing_team;
         
-        sprintf(query, 
-                "SELECT gp.user_id, u.username "
-                "FROM game_players gp "
-                "JOIN users u ON gp.user_id = u.id "
-                "WHERE gp.game_id = %d AND gp.team = %d "
-                "AND u.autoup = true "
-                "ORDER BY gp.relative_position",
-                game_id, team_with_autoup);
+        // If winning team was previously loss_promoted, they should all be auto-upped regardless of autoup setting
+        bool force_autoup_winning_team = winning_team_was_previously_loss_promoted;
+        
+        // Modified query to include either:
+        // 1. Players with autoup=true (normally)
+        // 2. ALL players from winning team if they were previously loss_promoted
+        if (force_autoup_winning_team && team_with_autoup == winning_team) {
+            sprintf(query, 
+                    "SELECT gp.user_id, u.username "
+                    "FROM game_players gp "
+                    "JOIN users u ON gp.user_id = u.id "
+                    "WHERE gp.game_id = %d AND gp.team = %d "
+                    "ORDER BY gp.relative_position",
+                    game_id, team_with_autoup);
+            printf("Auto-checking ALL players from previously loss_promoted winning team\n");
+        } else {
+            sprintf(query, 
+                    "SELECT gp.user_id, u.username "
+                    "FROM game_players gp "
+                    "JOIN users u ON gp.user_id = u.id "
+                    "WHERE gp.game_id = %d AND gp.team = %d "
+                    "AND u.autoup = true "
+                    "ORDER BY gp.relative_position",
+                    game_id, team_with_autoup);
+        }
         
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -2214,7 +2259,11 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             int autoup_count = PQntuples(res);
             
             if (autoup_count > 0) {
-                printf("Auto-checking in %d players with autoup=true:\n", autoup_count);
+                if (force_autoup_winning_team && team_with_autoup == winning_team) {
+                    printf("Auto-checking in %d players from winning team (previously loss_promoted):\n", autoup_count);
+                } else {
+                    printf("Auto-checking in %d players with autoup=true:\n", autoup_count);
+                }
                 
                 // Use queue_next_up from game_sets for autoup players
                 // This ensures we place them after all existing players
