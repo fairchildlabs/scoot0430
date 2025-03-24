@@ -1909,6 +1909,8 @@ bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, 
     return same_team;
 }
 
+
+
 /**
  * End game and optionally auto-promote players
  */
