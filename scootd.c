@@ -31,13 +31,13 @@ void checkout_players(PGconn *conn, int argc, char *argv[]);
 void show_player_info(PGconn *conn, const char *username, const char *format);
 // void promote_players(PGconn *conn, int game_id, bool promote_winners); // Removed as requested
 void list_next_up_players(PGconn *conn, int game_set_id, const char *format);
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate);
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format);
 // void finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score); // Removed as requested
 // Removed direct SQL query function as requested
 
 /* Function prototypes - from enhanced scootd */
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
-void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote);
+void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote, const char *status_format);
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
 bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size);
 
@@ -537,9 +537,14 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
 /**
  * Propose a new game without creating it
  */
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate) {
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format) {
     char query[4096];
     PGresult *res;
+    
+    // Set default status_format to "none" if not provided
+    if (status_format == NULL) {
+        status_format = "none";
+    }
     
     // Get game set details
     sprintf(query, 
@@ -1617,9 +1622,14 @@ bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, 
 /**
  * End game and optionally auto-promote players
  */
-void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote) {
+void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote, const char *status_format) {
     char query[4096];
     PGresult *res;
+    
+    // Set default status_format to "none" if not provided
+    if (status_format == NULL) {
+        status_format = "none";
+    }
     
     // Start a transaction
     res = PQexec(conn, "BEGIN");
@@ -2048,7 +2058,18 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         return;
     }
     
-    printf("Game %d successfully ended\n", game_id);
+    // Output information based on format
+    if (strcmp(status_format, "text") == 0 || strcmp(status_format, "json") == 0) {
+        // Print basic game ending message
+        printf("Game %d successfully ended with score: %d-%d\n", game_id, home_score, away_score);
+        
+        // Instead of our custom format, use the game-set-status function to provide 
+        // consistent output with new-game command
+        get_game_set_status(conn, set_id, status_format);
+    } else {
+        // For "none" format, just print the basic message
+        printf("Game %d successfully ended\n", game_id);
+    }
     
     PQclear(res);
 }
@@ -2137,7 +2158,7 @@ int main(int argc, char *argv[]) {
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  new-game <game_set_id> <court> [format] - Create a new game with next available players (format: text|json, default: text)\n");
         printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including active games, next-up players, and completed games\n");
-        printf("  end-game <game_id> <home_score> <away_score> [autopromote] - End a game with the given scores and optionally auto-promote players (true/false, default is true)\n");
+        printf("  end-game <game_id> <home_score> <away_score> [autopromote] [format] - End a game with the given scores and return the game set status (autopromote: true/false, default is true; format: none|text|json, default is none)\n");
         return 1;
     }
     
@@ -2208,7 +2229,7 @@ int main(int argc, char *argv[]) {
                 if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
                     fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
                 } else {
-                    propose_game(conn, game_set_id, court, format, false);
+                    propose_game(conn, game_set_id, court, format, false, format);
                 }
             }
         }
@@ -2226,7 +2247,7 @@ int main(int argc, char *argv[]) {
                 if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
                     fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
                 } else {
-                    propose_game(conn, game_set_id, court, format, true);
+                    propose_game(conn, game_set_id, court, format, true, format);
                 }
             }
         }
@@ -2259,8 +2280,10 @@ int main(int argc, char *argv[]) {
         get_game_set_status(conn, game_set_id, format);
     } else if (strcmp(command, "end-game") == 0) {
         if (argc < 5) {
-            fprintf(stderr, "Usage: %s end-game <game_id> <home_score> <away_score> [autopromote]\n", argv[0]);
+            fprintf(stderr, "Usage: %s end-game <game_id> <home_score> <away_score> [autopromote] [format]\n", argv[0]);
             fprintf(stderr, "  autopromote: true|false (default: true)\n");
+            fprintf(stderr, "  format: none|text|json (default: none)\n");
+            fprintf(stderr, "  When format is text or json, returns complete game set status info\n");
             PQfinish(conn);
             return 1;
         }
@@ -2283,17 +2306,36 @@ int main(int argc, char *argv[]) {
         
         // Get autopromote flag (default is true)
         bool autopromote = true;
+        const char *status_format = "none";
+        
+        // Check if we have an autopromote argument
         if (argc >= 6) {
             if (strcmp(argv[5], "false") == 0) {
                 autopromote = false;
-            } else if (strcmp(argv[5], "true") != 0) {
-                fprintf(stderr, "Invalid autopromote value: %s (should be 'true' or 'false')\n", argv[5]);
+            } else if (strcmp(argv[5], "true") == 0) {
+                autopromote = true;
+            } else if (strcmp(argv[5], "none") == 0 || strcmp(argv[5], "text") == 0 || strcmp(argv[5], "json") == 0) {
+                // This is actually the format parameter
+                status_format = argv[5];
+            } else {
+                fprintf(stderr, "Invalid parameter: %s (expected 'true', 'false', 'none', 'text', or 'json')\n", argv[5]);
                 PQfinish(conn);
                 return 1;
             }
         }
         
-        end_game(conn, game_id, home_score, away_score, autopromote);
+        // Check if we have a format argument (after autopromote)
+        if (argc >= 7) {
+            if (strcmp(argv[6], "none") == 0 || strcmp(argv[6], "text") == 0 || strcmp(argv[6], "json") == 0) {
+                status_format = argv[6];
+            } else {
+                fprintf(stderr, "Invalid format: %s (should be 'none', 'text', or 'json')\n", argv[6]);
+                PQfinish(conn);
+                return 1;
+            }
+        }
+        
+        end_game(conn, game_id, home_score, away_score, autopromote, status_format);
     } else {
         fprintf(stderr, "Unknown command: %s\n", command);
     }
