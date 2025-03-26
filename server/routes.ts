@@ -611,9 +611,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
+      console.log('POST /api/scootd/end-game - Request body:', req.body);
       const { gameId, homeScore, awayScore, autoPromote } = req.body;
       
       if (!gameId || homeScore === undefined || awayScore === undefined) {
+        console.log('POST /api/scootd/end-game - Missing required parameters:', { gameId, homeScore, awayScore });
         return res.status(400).json({ 
           error: "Missing required parameters: gameId, homeScore, awayScore" 
         });
@@ -626,19 +628,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       command += " json"; // Always get JSON response
       
+      console.log('POST /api/scootd/end-game - Executing command:', command);
+      
       // Execute the scootd end-game command
       const output = await executeScootd(command);
+      console.log('POST /api/scootd/end-game - Raw output:', output);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
       if (jsonStartIndex === -1) {
         // For commands without JSON response, return the raw output
+        console.log('POST /api/scootd/end-game - No JSON found in output, returning raw output');
         return res.json({ success: true, raw: output });
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      console.log('POST /api/scootd/end-game - JSON string:', jsonStr);
+      
+      try {
+        const data = JSON.parse(jsonStr);
+        console.log('POST /api/scootd/end-game - Parsed JSON response:', data);
+        res.json(data);
+      } catch (jsonError) {
+        console.error('POST /api/scootd/end-game - Error parsing JSON:', jsonError);
+        res.status(500).json({ error: 'Failed to parse scootd response' });
+      }
     } catch (error) {
       console.error('POST /api/scootd/end-game - Error:', error);
       res.status(500).json({ error: (error as Error).message });
