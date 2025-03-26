@@ -38,6 +38,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
 /* Function prototypes - from enhanced scootd */
 void get_game_set_status(PGconn *conn, int game_set_id, const char *format);
 void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool autopromote, const char *status_format);
+void bump_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format);
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
 bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size);
 
@@ -2075,6 +2076,137 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
 }
 
 /**
+ * Bump a player to swap positions with the next player below in the queue
+ * Takes game_set_id, queue_position, and user_id to verify the correct player
+ * Returns status information in the specified format
+ */
+void bump_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format) {
+    char query[4096];
+    PGresult *res;
+    
+    // Start a transaction
+    res = PQexec(conn, "BEGIN");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        return;
+    }
+    PQclear(res);
+    
+    // First, verify that the player with the given user_id is at the specified queue_position
+    sprintf(query, 
+            "SELECT c.id, c.user_id, u.username, c.queue_position "
+            "FROM checkins c "
+            "JOIN users u ON c.user_id = u.id "
+            "WHERE c.game_set_id = %d AND c.is_active = true "
+            "AND c.queue_position = %d AND c.user_id = %d",
+            game_set_id, queue_position, user_id);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Error verifying player: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "No player with user ID %d found at position %d in game set %d\n", 
+                user_id, queue_position, game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int current_checkin_id = atoi(PQgetvalue(res, 0, 0));
+    const char *username = PQgetvalue(res, 0, 2);
+    PQclear(res);
+    
+    // Check if there is a next player below in the queue to swap with
+    sprintf(query, 
+            "SELECT c.id, c.user_id, u.username, c.queue_position "
+            "FROM checkins c "
+            "JOIN users u ON c.user_id = u.id "
+            "WHERE c.game_set_id = %d AND c.is_active = true "
+            "AND c.queue_position > %d "
+            "ORDER BY c.queue_position ASC "
+            "LIMIT 1",
+            game_set_id, queue_position);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Error finding next player: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        printf("No player below position %d in the queue to swap with\n", queue_position);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int next_checkin_id = atoi(PQgetvalue(res, 0, 0));
+    int next_user_id = atoi(PQgetvalue(res, 0, 1));
+    const char *next_username = PQgetvalue(res, 0, 2);
+    int next_position = atoi(PQgetvalue(res, 0, 3));
+    PQclear(res);
+    
+    // Swap the queue positions of the two players
+    sprintf(query, 
+            "UPDATE checkins SET queue_position = %d WHERE id = %d",
+            next_position, current_checkin_id);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Error updating current player: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    sprintf(query, 
+            "UPDATE checkins SET queue_position = %d WHERE id = %d",
+            queue_position, next_checkin_id);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Error updating next player: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Commit the transaction
+    res = PQexec(conn, "COMMIT");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    printf("Successfully bumped player %s (ID: %d) from position %d to position %d, "
+           "swapping with %s (ID: %d)\n", 
+           username, user_id, queue_position, next_position, 
+           next_username, next_user_id);
+    
+    // Output additional status information based on format
+    if (strcmp(status_format, "text") == 0 || strcmp(status_format, "json") == 0) {
+        get_game_set_status(conn, game_set_id, status_format);
+    }
+}
+
+/**
  * Compare two teams to see if they are the same
  * Returns true if all players are the same on both teams
  */
@@ -2159,6 +2291,7 @@ int main(int argc, char *argv[]) {
         printf("  new-game <game_set_id> <court> [format] - Create a new game with next available players (format: text|json, default: text)\n");
         printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including active games, next-up players, and completed games\n");
         printf("  end-game <game_id> <home_score> <away_score> [autopromote] [format] - End a game with the given scores and return the game set status (autopromote: true/false, default is true; format: none|text|json, default is none)\n");
+        printf("  bump-player <game_set_id> <queue_position> <user_id> [format] - Swap a player with the next player below in the queue (format: none|text|json, default is none)\n");
         return 1;
     }
     
@@ -2336,6 +2469,48 @@ int main(int argc, char *argv[]) {
         }
         
         end_game(conn, game_id, home_score, away_score, autopromote, status_format);
+    } else if (strcmp(command, "bump-player") == 0) {
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s bump-player <game_set_id> <queue_position> <user_id> [format]\n", argv[0]);
+            fprintf(stderr, "  format: none|text|json (default: none)\n");
+            fprintf(stderr, "  Swaps a player with the next player below in the queue\n");
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        if (game_set_id <= 0) {
+            fprintf(stderr, "Invalid game_set_id: %s\n", argv[2]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int queue_position = atoi(argv[3]);
+        if (queue_position <= 0) {
+            fprintf(stderr, "Invalid queue_position: %s\n", argv[3]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int user_id = atoi(argv[4]);
+        if (user_id <= 0) {
+            fprintf(stderr, "Invalid user_id: %s\n", argv[4]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        // Get output format (default is none)
+        const char *status_format = "none";
+        if (argc >= 6) {
+            status_format = argv[5];
+            if (strcmp(status_format, "none") != 0 && strcmp(status_format, "text") != 0 && strcmp(status_format, "json") != 0) {
+                fprintf(stderr, "Invalid format: %s (should be 'none', 'text', or 'json')\n", status_format);
+                PQfinish(conn);
+                return 1;
+            }
+        }
+        
+        bump_player(conn, game_set_id, queue_position, user_id, status_format);
     } else {
         fprintf(stderr, "Unknown command: %s\n", command);
     }
