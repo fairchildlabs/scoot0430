@@ -6,13 +6,100 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { ScootLogo } from "@/components/logos/scoot-logo";
 import { format } from "date-fns";
-import { type GameSet, type Game } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
 import { apiRequest, scootdApiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+interface GameSetStatus {
+  game_set?: {
+    id: number;
+    is_active: boolean;
+    current_position: number;
+    queue_next_up: number;
+    max_consecutive_games: number;
+  };
+  game_set_info?: {
+    id: number;
+    created_by: string;
+    gym: string;
+    number_of_courts: number;
+    max_consecutive_games: number;
+    current_queue_position: number;
+    queue_next_up: number;
+    created_at: string;
+    is_active: boolean;
+  };
+  active_games: {
+    id: number;
+    court: string;
+    state: string;
+    team1_score: number | null;
+    team2_score: number | null;
+    start_time: string;
+    end_time: string | null;
+    players: {
+      username: string;
+      queue_position: number;
+      team: number;
+      birth_year?: number;
+    }[];
+  }[];
+  next_up_players: {
+    username: string;
+    queue_position: number;
+    type: string;
+    team: number | null;
+    birth_year?: number;
+  }[];
+  recent_completed_games: {
+    id: number;
+    court: string;
+    state: string;
+    team1_score: number | null;
+    team2_score: number | null;
+    start_time: string;
+    end_time: string | null;
+    players: {
+      username: string;
+      queue_position: number;
+      team: number;
+      birth_year?: number;
+    }[];
+  }[];
+  
+  // For backward compatibility with our UI
+  id: number;
+  gym: string;
+  playersPerTeam: number;
+  numberOfCourts: number;
+  currentQueuePosition: number;
+  createdAt: string;
+  games: {
+    id: number;
+    court: string;
+    state: string;
+    team1Score: number | null;
+    team2Score: number | null;
+    startTime: string;
+    endTime: string | null;
+    players: {
+      username: string;
+      queuePosition: number;
+      team: number;
+      birthYear?: number;
+    }[];
+  }[];
+  nextUp: {
+    username: string;
+    queuePosition: number;
+    type: string;
+    team: number | null;
+    birthYear?: number;
+  }[];
+}
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -20,26 +107,106 @@ export default function HomePage() {
   const [, setLocation] = useLocation();
   const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number }>>({});
   const { toast } = useToast();
+  
+  // State for scootd-based data
+  const [gameSetStatus, setGameSetStatus] = useState<GameSetStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data: activeGameSet } = useQuery<GameSet>({
-    queryKey: ["/api/game-sets/active"],
-    enabled: !!user,
-    refetchOnWindowFocus: true,
-  });
+  // Function to fetch game set status using scootd
+  const fetchGameSetStatus = async () => {
+    try {
+      setLoading(true);
+      const data = await scootdApiRequest<any>("GET", "game-set-status");
+      
+      // Transform the data from scootd API format to our UI format
+      const transformedData: GameSetStatus = {
+        // Game set info
+        id: data.game_set?.id || 0,
+        gym: data.game_set_info?.gym || "",
+        playersPerTeam: data.game_set_info?.max_consecutive_games || 4,
+        numberOfCourts: data.game_set_info?.number_of_courts || 1,
+        currentQueuePosition: data.game_set_info?.current_queue_position || 0,
+        createdAt: data.game_set_info?.created_at || new Date().toISOString(),
+        
+        // Original fields from scootd
+        game_set: data.game_set,
+        game_set_info: data.game_set_info,
+        active_games: data.active_games || [],
+        next_up_players: data.next_up_players || [],
+        recent_completed_games: data.recent_completed_games || [],
+        
+        // Transform games for UI
+        games: [
+          ...(data.active_games || []).map((g: any) => ({
+            id: g.id,
+            court: g.court,
+            state: g.state,
+            team1Score: g.team1_score,
+            team2Score: g.team2_score,
+            startTime: g.start_time,
+            endTime: g.end_time,
+            players: (g.players || []).map((p: any) => ({
+              username: p.username,
+              queuePosition: p.queue_position,
+              team: p.team,
+              birthYear: p.birth_year
+            }))
+          })),
+          ...(data.recent_completed_games || []).map((g: any) => ({
+            id: g.id,
+            court: g.court,
+            state: g.state || 'final', // Default to 'final' for completed games
+            team1Score: g.team1_score,
+            team2Score: g.team2_score,
+            startTime: g.start_time,
+            endTime: g.end_time,
+            players: (g.players || []).map((p: any) => ({
+              username: p.username,
+              queuePosition: p.queue_position,
+              team: p.team,
+              birthYear: p.birth_year
+            }))
+          }))
+        ],
+        
+        // Transform next up players for UI
+        nextUp: (data.next_up_players || []).map((p: any) => ({
+          username: p.username,
+          queuePosition: p.queue_position,
+          type: p.type,
+          team: p.team,
+          birthYear: p.birth_year
+        }))
+      };
+      
+      setGameSetStatus(transformedData);
+      setError(null);
+      console.log('Fetched and transformed game set status:', transformedData);
+    } catch (err) {
+      console.error('Error fetching game set status:', err);
+      setError('Failed to load game status');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const { data: checkins = [], isLoading: checkinsLoading } = useQuery({
-    queryKey: ["/api/checkins"],
-    enabled: !!user,
-    refetchOnWindowFocus: true,
-  });
+  // Fetch data initially and set up polling interval
+  useEffect(() => {
+    if (user) {
+      fetchGameSetStatus();
+      
+      // Set up polling interval to refresh data every 5 seconds
+      const intervalId = setInterval(() => {
+        fetchGameSetStatus();
+      }, 5000);
+      
+      // Clean up interval on unmount
+      return () => clearInterval(intervalId);
+    }
+  }, [user]);
 
-  const { data: activeGames = [], isLoading: gamesLoading } = useQuery<Game[]>({
-    queryKey: ["/api/games/active"],
-    enabled: !!user,
-    refetchOnWindowFocus: true,
-  });
-
-  if (gamesLoading || checkinsLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -60,11 +227,8 @@ export default function HomePage() {
     return (currentYear - birthYear) >= 75;
   };
 
-  // Get players for the NEXT_UP list based strictly on database values
-  // Filter players that have no gameId (not in a current game) 
-  // Just sort by queue position - server handles the position assignments properly
-  const nextUpPlayers = checkins?.filter(p => p.gameId === null)
-    .sort((a, b) => a.queuePosition - b.queuePosition) || [];
+  // Get players for the NEXT_UP list from the gameSetStatus
+  const nextUpPlayers = gameSetStatus?.nextUp || [];
   
   // Add debugging for nextUpPlayers
   console.log('Next up players with their types:', nextUpPlayers.map(p => ({
@@ -74,31 +238,12 @@ export default function HomePage() {
     pos: p.queuePosition
   })));
 
-  console.log('Debug - Data from queries:', {
-    activeGameSet: {
-      id: activeGameSet?.id,
-      currentQueuePosition: activeGameSet?.currentQueuePosition,
-      playersPerTeam: activeGameSet?.playersPerTeam
-    },
-    checkins: checkins?.map(p => ({
-      username: p.username,
-      pos: p.queuePosition,
-      isActive: p.isActive,
-      gameId: p.gameId,
-      type: p.type
-    })),
-    nextUpPlayers: nextUpPlayers.map(p => ({
-      name: p.username,
-      pos: p.queuePosition,
-      type: p.type,
-      isActive: p.isActive,
-      gameId: p.gameId
-    }))
-  });
+  // Separate active and finished games from the gameSetStatus
+  const activeGamesList = gameSetStatus?.games.filter(game => game.state === 'started') || [];
+  const finishedGamesList = gameSetStatus?.games.filter(game => game.state === 'final') || [];
 
-  // Separate active and finished games
-  // Add some debug logging to see what's coming back from the API
-  console.log('Games from API with their states:', activeGames.map(game => ({
+  // Log game states for debugging
+  console.log('Games from scootd with their states:', gameSetStatus?.games.map(game => ({
     id: game.id,
     state: game.state,
     court: game.court,
@@ -106,25 +251,22 @@ export default function HomePage() {
   })));
   
   // Debug the active game players for each team
-  const activeGame = activeGames.find(game => game.state === 'started');
+  const activeGame = gameSetStatus?.games.find(game => game.state === 'started');
   if (activeGame) {
     console.log('Active Game Players:', {
       gameId: activeGame.id,
-      homePlayers: activeGame.players?.filter((p: any) => p.team === 1).map((p: any) => ({
+      homePlayers: activeGame.players.filter(p => p.team === 1).map(p => ({
         username: p.username,
         queuePosition: p.queuePosition,
         team: p.team
       })),
-      awayPlayers: activeGame.players?.filter((p: any) => p.team === 2).map((p: any) => ({
+      awayPlayers: activeGame.players.filter(p => p.team === 2).map(p => ({
         username: p.username,
         queuePosition: p.queuePosition,
         team: p.team
       }))
     });
   }
-  
-  const activeGamesList = activeGames.filter(game => game.state === 'started');
-  const finishedGamesList = activeGames.filter(game => game.state === 'final');
 
   const toggleScoreInputs = (gameId: number) => {
     setGameScores(prev => ({
@@ -175,15 +317,6 @@ export default function HomePage() {
         description: `Game #${gameId} ended with score: ${scores.team1Score}-${scores.team2Score}`,
       });
 
-      // First invalidate all relevant queries in parallel
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/games/active"], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ["/api/checkins"], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
-        // Also invalidate any potentially affected query keys
-        queryClient.invalidateQueries({ queryKey: [`/api/game-sets/${activeGameSet?.id}/log`], exact: true })
-      ]);
-
       // Reset game scores state
       setGameScores(prev => ({
         ...prev,
@@ -194,13 +327,83 @@ export default function HomePage() {
         }
       }));
 
-      // Force an immediate refetch of the data
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["/api/games/active"], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["/api/checkins"], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
-        queryClient.refetchQueries({ queryKey: [`/api/game-sets/${activeGameSet?.id}/log`], exact: true })
-      ]);
+      // If we got a full game set status response back from scootd, transform and update state directly
+      if (response && typeof response === 'object') {
+        if ('games' in response) {
+          // Response is already in our UI format
+          setGameSetStatus(response as GameSetStatus);
+          console.log('Updated game set status with direct response data:', response);
+        } else if ('active_games' in response || 'game_set' in response) {
+          // Response is in scootd format, need to transform
+          const transformedData: GameSetStatus = {
+            id: response.game_set?.id || 0,
+            gym: response.game_set_info?.gym || "",
+            playersPerTeam: response.game_set_info?.max_consecutive_games || 4,
+            numberOfCourts: response.game_set_info?.number_of_courts || 1,
+            currentQueuePosition: response.game_set_info?.current_queue_position || 0,
+            createdAt: response.game_set_info?.created_at || new Date().toISOString(),
+            
+            // Original fields from scootd
+            game_set: response.game_set,
+            game_set_info: response.game_set_info,
+            active_games: response.active_games || [],
+            next_up_players: response.next_up_players || [],
+            recent_completed_games: response.recent_completed_games || [],
+            
+            // Transform games for UI
+            games: [
+              ...(response.active_games || []).map((g: any) => ({
+                id: g.id,
+                court: g.court,
+                state: g.state,
+                team1Score: g.team1_score,
+                team2Score: g.team2_score,
+                startTime: g.start_time,
+                endTime: g.end_time,
+                players: (g.players || []).map((p: any) => ({
+                  username: p.username,
+                  queuePosition: p.queue_position,
+                  team: p.team,
+                  birthYear: p.birth_year
+                }))
+              })),
+              ...(response.recent_completed_games || []).map((g: any) => ({
+                id: g.id,
+                court: g.court,
+                state: g.state || 'final',
+                team1Score: g.team1_score,
+                team2Score: g.team2_score,
+                startTime: g.start_time,
+                endTime: g.end_time,
+                players: (g.players || []).map((p: any) => ({
+                  username: p.username,
+                  queuePosition: p.queue_position,
+                  team: p.team,
+                  birthYear: p.birth_year
+                }))
+              }))
+            ],
+            
+            // Transform next up players for UI
+            nextUp: (response.next_up_players || []).map((p: any) => ({
+              username: p.username,
+              queuePosition: p.queue_position,
+              type: p.type,
+              team: p.team,
+              birthYear: p.birth_year
+            }))
+          };
+          
+          setGameSetStatus(transformedData);
+          console.log('Transformed and updated game set status from response:', transformedData);
+        } else {
+          // Response is in an unknown format, fetch fresh data
+          await fetchGameSetStatus();
+        }
+      } else {
+        // Otherwise, fetch the updated game set status
+        await fetchGameSetStatus();
+      }
 
       console.log('All queries have been refetched');
     } catch (error) {
@@ -235,21 +438,8 @@ export default function HomePage() {
         description: `Game Set #${gameSetId} has been successfully deactivated`,
       });
 
-      // Invalidate and refresh all relevant queries
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/games/active"], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ["/api/checkins"], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ["/api/game-sets"], exact: true })
-      ]);
-
-      // Force an immediate refetch of the data
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["/api/games/active"], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["/api/checkins"], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["/api/game-sets/active"], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["/api/game-sets"], exact: true })
-      ]);
+      // Refresh the game set status
+      await fetchGameSetStatus();
 
     } catch (error) {
       console.error('Error ending game set:', error);
@@ -405,14 +595,14 @@ export default function HomePage() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <CardTitle>
-                    {activeGameSet ? (
+                    {gameSetStatus ? (
                       <div className="flex flex-col space-y-1">
-                        <span className="text-xl">Game Set #{activeGameSet.id}</span>
+                        <span className="text-xl">Game Set #{gameSetStatus.id}</span>
                         <span className="text-sm text-muted-foreground">
-                          Created {format(new Date(activeGameSet.createdAt), 'PPp')}
+                          Created {format(new Date(gameSetStatus.createdAt), 'PPp')}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {activeGameSet.gym} - {activeGameSet.playersPerTeam} players per team - {activeGameSet.numberOfCourts} courts
+                          {gameSetStatus.gym} - {gameSetStatus.playersPerTeam} players per team - {gameSetStatus.numberOfCourts} courts
                         </span>
                       </div>
                     ) : (
@@ -430,9 +620,9 @@ export default function HomePage() {
                           New Game
                         </Button>
                       )}
-                      {activeGameSet && (
+                      {gameSetStatus && (
                         <Button 
-                          onClick={() => handleEndSet(activeGameSet.id)}
+                          onClick={() => handleEndSet(gameSetStatus.id)}
                           variant="outline"
                           className="bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
                         >
