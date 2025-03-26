@@ -27,7 +27,8 @@ void list_users(PGconn *conn);
 // void list_active_checkins(PGconn *conn); // Removed as requested
 void list_active_games(PGconn *conn);
 void show_active_game_set(PGconn *conn);
-void checkout_players(PGconn *conn, int argc, char *argv[]);
+void checkout_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format);
+void bump_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format);
 void show_player_info(PGconn *conn, const char *username, const char *format);
 // void promote_players(PGconn *conn, int game_id, bool promote_winners); // Removed as requested
 void list_next_up_players(PGconn *conn, int game_set_id, const char *format);
@@ -190,11 +191,15 @@ void show_active_game_set(PGconn *conn) {
 }
 
 /**
- * Check out player(s) at specified queue position(s)
+ * Check out a player from a game set with specific queue position and user ID
+ * This function also adjusts the queue positions of players below the checked out player
  */
-void checkout_players(PGconn *conn, int argc, char *argv[]) {
+void checkout_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format) {
+    char query[4096];
+    PGresult *res;
+    
     // Start a transaction
-    PGresult *res = PQexec(conn, "BEGIN");
+    res = PQexec(conn, "BEGIN");
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
         PQclear(res);
@@ -202,67 +207,100 @@ void checkout_players(PGconn *conn, int argc, char *argv[]) {
     }
     PQclear(res);
     
-    // Process each position
-    int success_count = 0;
-    for (int i = 3; i < argc; i++) {
-        int position = atoi(argv[i]);
-        if (position <= 0) {
-            fprintf(stderr, "Invalid position: %s\n", argv[i]);
-            continue;
-        }
-        
-        // Prepare query with parameter
-        const char *params[1];
-        char pos_str[12];
-        snprintf(pos_str, sizeof(pos_str), "%d", position);
-        params[0] = pos_str;
-        
-        // Execute the query
-        res = PQexecParams(conn, 
-            "UPDATE checkins SET is_active = false "
-            "WHERE is_active = true AND queue_position = $1 "
-            "RETURNING id, user_id, queue_position", 
-            1, NULL, params, NULL, NULL, 0);
-        
-        if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-            fprintf(stderr, "UPDATE failed for position %d: %s", 
-                    position, PQerrorMessage(conn));
-            PQclear(res);
-            continue;
-        }
-        
-        if (PQntuples(res) > 0) {
-            printf("Checked out player at position %d (ID: %s, User ID: %s)\n",
-                   position,
-                   PQgetvalue(res, 0, 0),
-                   PQgetvalue(res, 0, 1));
-            success_count++;
-        } else {
-            printf("No active check-in found at position %d\n", position);
-        }
-        
+    // First, verify the player at the specified position has the correct user_id
+    sprintf(query, 
+            "SELECT c.id, c.user_id, u.username, c.queue_position "
+            "FROM checkins c "
+            "JOIN users u ON c.user_id = u.id "
+            "WHERE c.game_set_id = %d AND c.is_active = true "
+            "AND c.queue_position = %d AND c.user_id = %d",
+            game_set_id, queue_position, user_id);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Error verifying player: %s", PQerrorMessage(conn));
         PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
     }
     
-    // Commit the transaction if at least one checkout was successful
-    if (success_count > 0) {
-        res = PQexec(conn, "COMMIT");
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
-            PQclear(res);
-            PQexec(conn, "ROLLBACK");
-            return;
-        }
-        printf("Successfully checked out %d player(s)\n", success_count);
-    } else {
-        res = PQexec(conn, "ROLLBACK");
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            fprintf(stderr, "ROLLBACK command failed: %s", PQerrorMessage(conn));
-        }
-        printf("No players were checked out\n");
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "No active check-in found for user ID %d at position %d in game set %d\n", 
+                user_id, queue_position, game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
     }
+    
+    int checkin_id = atoi(PQgetvalue(res, 0, 0));
+    const char *username = PQgetvalue(res, 0, 2);
+    PQclear(res);
+    
+    // Now check out the player by setting is_active to false
+    sprintf(query, 
+            "UPDATE checkins SET is_active = false "
+            "WHERE id = %d "
+            "RETURNING id, user_id, queue_position", 
+            checkin_id);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Error checking out player: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "Failed to check out player with ID %d\n", checkin_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    printf("Successfully checked out player %s (ID: %d) from position %d\n", 
+           username, user_id, queue_position);
     
     PQclear(res);
+    
+    // Now adjust the queue positions of all players below the checked out player
+    sprintf(query, 
+            "UPDATE checkins "
+            "SET queue_position = queue_position - 1 "
+            "WHERE game_set_id = %d AND is_active = true "
+            "AND queue_position > %d",
+            game_set_id, queue_position);
+            
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Error adjusting queue positions: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int rows_affected = atoi(PQcmdTuples(res));
+    printf("Adjusted queue positions for %d player(s)\n", rows_affected);
+    
+    PQclear(res);
+    
+    // Commit the transaction
+    res = PQexec(conn, "COMMIT");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Output additional status information based on format
+    if (strcmp(status_format, "text") == 0 || strcmp(status_format, "json") == 0) {
+        get_game_set_status(conn, game_set_id, status_format);
+    }
 }
 
 /**
@@ -2284,7 +2322,7 @@ int main(int argc, char *argv[]) {
         printf("  users - List all users\n");
         printf("  active-games - List active games\n");
         printf("  active-game-set - Show active game set details\n");
-        printf("  checkout <position1> [position2] [position3] ... - Check out player(s) at queue position(s)\n");
+        printf("  checkout <game_set_id> <queue_position> <user_id> [format] - Check out a player from the queue and adjust queue positions (format: none|text|json, default: none)\n");
         printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
@@ -2312,10 +2350,44 @@ int main(int argc, char *argv[]) {
     } else if (strcmp(command, "active-game-set") == 0) {
         show_active_game_set(conn);
     } else if (strcmp(command, "checkout") == 0) {
-        if (argc < 3) {
-            fprintf(stderr, "Usage: %s checkout <position1> [position2] [position3] ...\n", argv[0]);
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s checkout <game_set_id> <queue_position> <user_id> [format]\n", argv[0]);
+            fprintf(stderr, "  format: none|text|json (default: none)\n");
+            fprintf(stderr, "  Checks out a player from the queue and adjusts positions of players below\n");
         } else {
-            checkout_players(conn, argc, argv);
+            int game_set_id = atoi(argv[2]);
+            if (game_set_id <= 0) {
+                fprintf(stderr, "Invalid game_set_id: %s\n", argv[2]);
+                PQfinish(conn);
+                return 1;
+            }
+            
+            int queue_position = atoi(argv[3]);
+            if (queue_position <= 0) {
+                fprintf(stderr, "Invalid queue_position: %s\n", argv[3]);
+                PQfinish(conn);
+                return 1;
+            }
+            
+            int user_id = atoi(argv[4]);
+            if (user_id <= 0) {
+                fprintf(stderr, "Invalid user_id: %s\n", argv[4]);
+                PQfinish(conn);
+                return 1;
+            }
+            
+            // Get output format (default is none)
+            const char *status_format = "none";
+            if (argc >= 6) {
+                status_format = argv[5];
+                if (strcmp(status_format, "none") != 0 && strcmp(status_format, "text") != 0 && strcmp(status_format, "json") != 0) {
+                    fprintf(stderr, "Invalid format: %s (should be 'none', 'text', or 'json')\n", status_format);
+                    PQfinish(conn);
+                    return 1;
+                }
+            }
+            
+            checkout_player(conn, game_set_id, queue_position, user_id, status_format);
         }
     } else if (strcmp(command, "player") == 0) {
         if (argc < 3) {
