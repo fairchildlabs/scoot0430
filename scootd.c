@@ -42,6 +42,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
 void bump_player(PGconn *conn, int game_set_id, int queue_position, int user_id, const char *status_format);
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
 bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size);
+void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *status_format);
 
 /**
  * Connect to the PostgreSQL database using environment variables
