@@ -23,6 +23,24 @@ export async function apiRequest(
   return res;
 }
 
+/**
+ * Makes a request to the scootd API wrapper
+ * 
+ * @param method The HTTP method (GET, POST, etc.)
+ * @param endpoint The scootd endpoint (e.g., "game-set-status", "checkin", etc.)
+ * @param data The request data (for POST requests)
+ * @returns The parsed JSON response
+ */
+export async function scootdApiRequest<T>(
+  method: string,
+  endpoint: string,
+  data?: unknown | undefined,
+): Promise<T> {
+  const url = `/api/scootd/${endpoint}`;
+  const res = await apiRequest(method, url, data);
+  return await res.json();
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
@@ -48,7 +66,7 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: true, 
       staleTime: 0, 
-      cacheTime: 0, 
+      gcTime: 0, // Changed from cacheTime to gcTime (TanStack Query v5 upgrade)
       retry: false,
     },
     mutations: {

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import NewGamePage from "./new-game";
 import { useDatabaseRefresh } from "@/hooks/use-database-refresh";
 import { Progress } from "@/components/ui/progress";
+import { apiRequest, scootdApiRequest } from "@/lib/queryClient";
 
 const pointSystemOptions = ['1s only', '2s only', '2s and 3s'] as const;
 const gymOptions = ['fonde'] as const;

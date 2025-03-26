@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, scootdApiRequest } from "@/lib/queryClient";
 import { type InsertGame } from "@shared/schema";
 import { Progress } from "@/components/ui/progress";
 
@@ -383,6 +383,56 @@ const NewGamePage = () => {
     return (currentYear - birthYear) >= 75;
   };
 
+  // Add a new mutation for scootd player operations
+  const scootdPlayerMutation = useMutation({
+    mutationFn: async ({ 
+      command,
+      userId, 
+      gameSetId, 
+      queuePosition
+    }: { 
+      command: string;  // 'checkout' or 'bump-player' 
+      userId: number;
+      gameSetId: number;
+      queuePosition: number;
+    }) => {
+      try {
+        // Call the scootd API wrapper
+        return await scootdApiRequest<any>(
+          "POST", 
+          command, 
+          {
+            user_id: userId,
+            game_set_id: gameSetId,
+            queue_position: queuePosition,
+            "status-format": "json"
+          }
+        );
+      } catch (error) {
+        console.error(`Scootd ${command} error:`, error);
+        throw error;
+      }
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] });
+      
+      // Display status message from the scootd response
+      setStatusMessage(data.message || `Player operation completed successfully`);
+      
+      // Clear status message after 3 seconds
+      setTimeout(() => setStatusMessage(''), 3000);
+    },
+    onError: (error: Error) => {
+      console.error('Scootd operation failed:', error);
+      setStatusMessage(`Error: ${error.message}`);
+      
+      // Clear error message after 5 seconds
+      setTimeout(() => setStatusMessage(''), 5000);
+    }
+  });
+
   const PlayerCard = ({ player, index, isNextUp = false, isAway = false }: { player: any; index: number; isNextUp?: boolean; isAway?: boolean }) => {
     // Helper function to get promotion badge text
     const getPromotionBadge = (type: string, team: number | null) => {
@@ -424,60 +474,6 @@ const NewGamePage = () => {
         <div className="flex items-center gap-2">
           {isOG(player.birthYear) && (
             <span className={`font-bold ${isNextUp ? 'text-white' : 'text-primary'}`}>OG</span>
-          )}
-          <Button
-            size="icon"
-            variant="outline"
-            className="rounded-full h-8 w-8 border-white text-white hover:text-white relative"
-            onClick={() => {
-              const playerNumber = player.queuePosition;
-              playerMoveMutation.mutate({
-                playerId: player.userId,
-                moveType: 'CHECKOUT',
-                playerNumber
-              });
-            }}
-            disabled={playerMoveMutation.isPending}
-          >
-            {playerMoveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin absolute" />
-            ) : (
-              <X className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className="rounded-full h-8 w-8 border-white text-white hover:text-white"
-            onClick={() => {
-              const playerNumber = player.queuePosition;
-              playerMoveMutation.mutate({ playerId: player.userId, moveType: 'BUMP', playerNumber });
-            }}
-            disabled={playerMoveMutation.isPending}
-          >
-            {playerMoveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandMetal className="h-4 w-4" />}
-          </Button>
-          {!isNextUp && (
-            <Button
-              size="icon"
-              variant="outline"
-              className="rounded-full h-8 w-8 border-white text-white hover:text-white"
-              onClick={() => {
-                const playerNumber = player.queuePosition;
-                playerMoveMutation.mutate({
-                  playerId: player.userId,
-                  moveType: isAway ? 'VERTICAL_SWAP' : 'HORIZONTAL_SWAP',
-                  playerNumber
-                });
-              }}
-              disabled={playerMoveMutation.isPending}
-            >
-              {playerMoveMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                isAway ? <ArrowDown className="h-4 w-4" /> : <ArrowLeftRight className="h-4 w-4" />
-              )}
-            </Button>
           )}
         </div>
       </div>
