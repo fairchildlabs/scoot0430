@@ -161,11 +161,10 @@ export default function HomePage() {
       
       // Use the scootd end-game command API endpoint
       const response = await scootdApiRequest("POST", "end-game", {
-        game_id: gameId,
-        home_score: scores.team1Score,
-        away_score: scores.team2Score,
-        autopromote: true,  // Enable automatic promotion of players
-        "status-format": "json"  // Get JSON response for better error handling
+        gameId: gameId,
+        homeScore: scores.team1Score,
+        awayScore: scores.team2Score,
+        autoPromote: true  // Enable automatic promotion of players
       });
 
       console.log('Game ended successfully with scootd:', response);
