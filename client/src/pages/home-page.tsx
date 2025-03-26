@@ -43,6 +43,7 @@ interface GameSetStatus {
     players: {
       username: string;
       queue_position: number;
+      position: number;
       team: number;
       birth_year?: number;
     }[];
@@ -50,6 +51,7 @@ interface GameSetStatus {
   next_up_players: {
     username: string;
     queue_position: number;
+    position: number;
     type: string;
     team: number | null;
     birth_year?: number;
@@ -65,6 +67,7 @@ interface GameSetStatus {
     players: {
       username: string;
       queue_position: number;
+      position: number;
       team: number;
       birth_year?: number;
     }[];
@@ -148,7 +151,7 @@ export default function HomePage() {
             endTime: g.end_time,
             players: (g.players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
               team: p.team,
               birthYear: p.birth_year
             }))
@@ -163,7 +166,7 @@ export default function HomePage() {
             endTime: g.end_time,
             players: (g.players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
               team: p.team,
               birthYear: p.birth_year
             }))
@@ -173,7 +176,7 @@ export default function HomePage() {
         // Transform next up players for UI
         nextUp: (data.next_up_players || []).map((p: any) => ({
           username: p.username,
-          queuePosition: p.queue_position,
+          queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
           type: p.type,
           team: p.team,
           birthYear: p.birth_year
@@ -196,10 +199,10 @@ export default function HomePage() {
     if (user) {
       fetchGameSetStatus();
       
-      // Set up polling interval to refresh data every 5 seconds
+      // Set up polling interval to refresh data every 10 seconds (reduced frequency)
       const intervalId = setInterval(() => {
         fetchGameSetStatus();
-      }, 5000);
+      }, 10000);
       
       // Clean up interval on unmount
       return () => clearInterval(intervalId);
@@ -362,7 +365,7 @@ export default function HomePage() {
                 endTime: g.end_time,
                 players: (g.players || []).map((p: any) => ({
                   username: p.username,
-                  queuePosition: p.queue_position,
+                  queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
                   team: p.team,
                   birthYear: p.birth_year
                 }))
@@ -377,7 +380,7 @@ export default function HomePage() {
                 endTime: g.end_time,
                 players: (g.players || []).map((p: any) => ({
                   username: p.username,
-                  queuePosition: p.queue_position,
+                  queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
                   team: p.team,
                   birthYear: p.birth_year
                 }))
@@ -387,7 +390,7 @@ export default function HomePage() {
             // Transform next up players for UI
             nextUp: (response.next_up_players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
               type: p.type,
               team: p.team,
               birthYear: p.birth_year
@@ -481,216 +484,237 @@ export default function HomePage() {
             <CardHeader className="py-2">
               <CardTitle className="text-sm font-medium">
                 Home
-                {game.state === 'final' && (
-                  <span className="ml-2 text-primary font-bold">
-                    {game.team1Score}
-                  </span>
+                {gameScores[game.id]?.showInputs && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      type="number"
+                      className="w-16 h-8"
+                      placeholder="Score"
+                      onChange={(e) => updateScore(game.id, 'team1Score', e.target.value)}
+                    />
+                  </div>
                 )}
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
+            <CardContent className="py-2">
+              <ul className="space-y-1">
                 {game.players
-                  ?.filter((p: any) => p.team === 1)
-                  .map((p: any) => (
-                    <div key={p.id} className="p-2 rounded-md text-sm bg-secondary/10">
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-4">
-                          <span className="font-mono text-lg">#{p.queuePosition}</span>
-                          <span>{p.username}</span>
-                        </div>
-                        {isOG(p.birthYear) && (
-                          <span className="text-primary font-bold ml-auto">OG</span>
+                  .filter((p: any) => p.team === 1)
+                  .map((player: any) => (
+                    <li
+                      key={player.username}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="flex items-center space-x-1">
+                        <span>{player.username}</span>
+                        {isOG(player.birthYear) && (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-yellow-200 text-yellow-900 text-xs font-bold">
+                            OG
+                          </span>
                         )}
                       </div>
-                    </div>
+                      <span className="text-xs text-gray-500">#{player.queuePosition}</span>
+                    </li>
                   ))}
-              </div>
-              {showScoreInputs && gameScores[game.id]?.showInputs && (
-                <div className="mt-4">
-                  <Input
-                    type="number"
-                    placeholder="Home Score"
-                    value={gameScores[game.id]?.team1Score || ''}
-                    onChange={(e) => updateScore(game.id, 'team1Score', e.target.value)}
-                    className="w-full bg-white text-black"
-                  />
-                </div>
-              )}
+              </ul>
             </CardContent>
           </Card>
-
+          
           {/* Away Team */}
-          <Card className="bg-black text-white border border-white">
+          <Card className="bg-gray-100 text-black">
             <CardHeader className="py-2">
               <CardTitle className="text-sm font-medium">
                 Away
-                {game.state === 'final' && (
-                  <span className="ml-2 text-white font-bold">
-                    {game.team2Score}
-                  </span>
+                {gameScores[game.id]?.showInputs && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      type="number"
+                      className="w-16 h-8"
+                      placeholder="Score"
+                      onChange={(e) => updateScore(game.id, 'team2Score', e.target.value)}
+                    />
+                  </div>
                 )}
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
+            <CardContent className="py-2">
+              <ul className="space-y-1">
                 {game.players
-                  ?.filter((p: any) => p.team === 2)
-                  .map((p: any) => (
-                    <div key={p.id} className="p-2 rounded-md text-sm bg-white/10">
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-4">
-                          <span className="font-mono text-lg">#{p.queuePosition}</span>
-                          <span>{p.username}</span>
-                        </div>
-                        {isOG(p.birthYear) && (
-                          <span className="text-white font-bold ml-auto">OG</span>
+                  .filter((p: any) => p.team === 2)
+                  .map((player: any) => (
+                    <li
+                      key={player.username}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="flex items-center space-x-1">
+                        <span>{player.username}</span>
+                        {isOG(player.birthYear) && (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-yellow-200 text-yellow-900 text-xs font-bold">
+                            OG
+                          </span>
                         )}
                       </div>
-                    </div>
+                      <span className="text-xs text-gray-500">#{player.queuePosition}</span>
+                    </li>
                   ))}
-              </div>
-              {showScoreInputs && gameScores[game.id]?.showInputs && (
-                <div className="mt-4">
-                  <Input
-                    type="number"
-                    placeholder="Away Score"
-                    value={gameScores[game.id]?.team2Score || ''}
-                    onChange={(e) => updateScore(game.id, 'team2Score', e.target.value)}
-                    className="w-full bg-white text-black"
-                  />
-                </div>
-              )}
+              </ul>
             </CardContent>
           </Card>
+          
+          {/* Score submission button */}
+          {gameScores[game.id]?.showInputs && canEndGames && (
+            <div className="col-span-2 flex justify-center">
+              <Button
+                onClick={() => handleEndGame(game.id)}
+                disabled={
+                  gameScores[game.id]?.team1Score === undefined ||
+                  gameScores[game.id]?.team2Score === undefined
+                }
+              >
+                Submit Scores
+              </Button>
+            </div>
+          )}
+          
+          {/* Final score display */}
+          {game.state === 'final' && (
+            <div className="col-span-2 flex justify-center">
+              <div className="text-lg font-bold">
+                Final Score: {game.team1Score} - {game.team2Score}
+              </div>
+            </div>
+          )}
         </div>
-        {showScoreInputs && gameScores[game.id]?.showInputs && (
-          <div className="mt-4 flex justify-end">
-            <Button
-              onClick={() => handleEndGame(game.id)}
-              disabled={
-                gameScores[game.id]?.team1Score === undefined ||
-                gameScores[game.id]?.team2Score === undefined
-              }
-            >
-              Submit Scores
-            </Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
 
-  // Check if user has permission to end games
-  const canEndGames = user?.isRoot || user?.isEngineer;
+  const canEndGames = !!user?.is_admin;
+  const canEndSet = !!user?.is_admin;
+  const activeGameSet = gameSetStatus?.game_set_info;
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-8">
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <ScootLogo className="h-24 w-24 text-primary" />
-          <div className="w-full max-w-2xl space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>
-                    {gameSetStatus ? (
-                      <div className="flex flex-col space-y-1">
-                        <span className="text-xl">Game Set #{gameSetStatus.id}</span>
-                        <span className="text-sm text-muted-foreground">
-                          Created {format(new Date(gameSetStatus.createdAt), 'PPp')}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {gameSetStatus.gym} - {gameSetStatus.playersPerTeam} players per team - {gameSetStatus.numberOfCourts} courts
-                        </span>
-                      </div>
-                    ) : (
-                      "Current Games"
-                    )}
-                  </CardTitle>
-                  {canEndGames && (
-                    <div className="flex gap-2">
-                      {/* Only show New Game button when there are no active games (only finished games or no games) */}
-                      {activeGamesList.length === 0 && (
-                        <Button 
-                          onClick={() => setLocation("/games?tab=new-game")}
-                          variant="outline"
-                        >
-                          New Game
-                        </Button>
-                      )}
-                      {gameSetStatus && (
-                        <Button 
-                          onClick={() => handleEndSet(gameSetStatus.id)}
-                          variant="outline"
-                          className="bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
-                        >
-                          End Set
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {/* Active Games */}
-                  {activeGamesList.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-medium mb-4">Active Games</h3>
-                      <div className="space-y-6">
-                        {activeGamesList.map(game => renderGameCard(game))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Next Up Section - Always show if there are players waiting */}
-                  {nextUpPlayers.length > 0 && (
-                    <div className="mt-8">
-                      <h3 className="text-lg font-medium mb-4">Next Up</h3>
-                      <div className="space-y-2">
-                        {nextUpPlayers.map((player: any) => (
-                          <div key={player.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
-                            <div className="flex items-center gap-4">
-                              <span className="font-mono text-lg">#{player.queuePosition}</span>
-                              <span>
-                                {player.username}
-                                {player.type === 'win_promoted' && (
-                                  <span className="ml-2 text-sm text-green-400">
-                                    (WP-{player.team === 1 ? 'H' : 'A'})
-                                  </span>
-                                )}
-                                {player.type === 'loss_promoted' && (
-                                  <span className="ml-2 text-sm text-yellow-400">
-                                    (LP-{player.team === 1 ? 'H' : 'A'})
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                            {isOG(player.birthYear) && (
-                              <span className="text-white font-bold">OG</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Finished Games */}
-                  {finishedGamesList.length > 0 && (
-                    <div className="mt-8">
-                      <h3 className="text-lg font-medium mb-4">Completed Games</h3>
-                      <div className="space-y-6">
-                        {finishedGamesList.map(game => renderGameCard(game, false))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+        {/* Error alert */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-100 text-red-800 rounded-md">
+            {error}
+          </div>
+        )}
+        
+        {/* Banner section */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-primary/10 p-6 rounded-lg">
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-3xl font-bold text-foreground">Scoot</h1>
+            <p className="text-muted-foreground">
+              {gameSetStatus?.gym} - {activeGameSet?.active_games?.length || 0} active courts
+            </p>
+          </div>
+          <div className="flex flex-col items-center md:items-end">
+            <ScootLogo className="w-24 md:w-32" />
+            <div className="mt-2 text-sm">
+              {gameSetStatus?.game_set?.id && canEndSet ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleEndSet(gameSetStatus.game_set!.id)}
+                >
+                  End Game Set
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
+        
+        {/* Active Games Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">Active Games</h2>
+          {activeGamesList.length === 0 ? (
+            <Card className="bg-secondary/20">
+              <CardContent className="flex flex-col items-center justify-center py-8">
+                <p className="text-muted-foreground mb-4">No active games</p>
+                {canEndGames && (
+                  <Button
+                    onClick={() => setLocation("/new-game")}
+                    variant="default"
+                  >
+                    Create New Game
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {activeGamesList.map((game) => renderGameCard(game))}
+            </div>
+          )}
+        </div>
+        
+        {/* Next Up Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">Next Up</h2>
+          <Card className="bg-secondary/20">
+            <CardContent className="py-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {nextUpPlayers.length === 0 ? (
+                  <p className="text-muted-foreground col-span-full text-center py-4">No players in queue</p>
+                ) : (
+                  nextUpPlayers.map((player) => (
+                    <Card key={player.username} className="bg-white">
+                      <CardContent className="p-3">
+                        <div className="flex flex-col items-center">
+                          <div className="text-sm font-medium mb-1 text-center">{player.username}</div>
+                          <div className="flex items-center space-x-1">
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold">
+                              {player.queuePosition}
+                            </span>
+                            {isOG(player.birthYear) && (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-yellow-200 text-yellow-900 text-xs font-bold">
+                                OG
+                              </span>
+                            )}
+                            {player.type === 'win_promoted' && player.team === 1 && (
+                              <span className="inline-flex items-center justify-center w-12 h-6 rounded-full bg-green-100 text-green-800 text-xs font-bold">
+                                WP-H
+                              </span>
+                            )}
+                            {player.type === 'win_promoted' && player.team === 2 && (
+                              <span className="inline-flex items-center justify-center w-12 h-6 rounded-full bg-green-100 text-green-800 text-xs font-bold">
+                                WP-A
+                              </span>
+                            )}
+                            {player.type === 'loss_promoted' && player.team === 1 && (
+                              <span className="inline-flex items-center justify-center w-12 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">
+                                LP-H
+                              </span>
+                            )}
+                            {player.type === 'loss_promoted' && player.team === 2 && (
+                              <span className="inline-flex items-center justify-center w-12 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">
+                                LP-A
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Recently Finished Games Section */}
+        {finishedGamesList.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4">Recently Finished Games</h2>
+            <div className="space-y-4">
+              {finishedGamesList.slice(0, 3).map((game) => renderGameCard(game, false))}
+            </div>
+          </div>
+        )}
       </main>
       <Footer />
     </div>
