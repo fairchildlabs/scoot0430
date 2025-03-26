@@ -11,12 +11,15 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
+import { apiRequest, scootdApiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function HomePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number }>>({});
+  const { toast } = useToast();
 
   const { data: activeGameSet } = useQuery<GameSet>({
     queryKey: ["/api/game-sets/active"],
@@ -154,23 +157,24 @@ export default function HomePage() {
     }
 
     try {
-      console.log(`Submitting final scores for game ${gameId}:`, scores);
-      const response = await fetch(`/api/games/${gameId}/score`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          team1Score: scores.team1Score,
-          team2Score: scores.team2Score,
-        }),
+      console.log(`Submitting final scores for game ${gameId} using scootd:`, scores);
+      
+      // Use the scootd end-game command API endpoint
+      const response = await scootdApiRequest("POST", "end-game", {
+        game_id: gameId,
+        home_score: scores.team1Score,
+        away_score: scores.team2Score,
+        autopromote: true,  // Enable automatic promotion of players
+        "status-format": "json"  // Get JSON response for better error handling
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update game score');
-      }
-
-      console.log('Score update successful, invalidating and refetching queries...');
+      console.log('Game ended successfully with scootd:', response);
+      
+      // Show success toast
+      toast({
+        title: "Game Ended",
+        description: `Game #${gameId} ended with score: ${scores.team1Score}-${scores.team2Score}`,
+      });
 
       // First invalidate all relevant queries in parallel
       await Promise.all([
@@ -202,6 +206,13 @@ export default function HomePage() {
       console.log('All queries have been refetched');
     } catch (error) {
       console.error('Error ending game:', error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to end game",
+        variant: "destructive"
+      });
     }
   };
 
@@ -213,18 +224,17 @@ export default function HomePage() {
     
     try {
       console.log(`Ending game set ${gameSetId}`);
-      const response = await fetch(`/api/game-sets/${gameSetId}/deactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+      
+      // Use the existing API endpoint for deactivating game sets
+      const response = await apiRequest("POST", `/api/game-sets/${gameSetId}/deactivate`);
+
+      console.log('Game set deactivated successfully:', response);
+      
+      // Show success toast
+      toast({
+        title: "Game Set Ended",
+        description: `Game Set #${gameSetId} has been successfully deactivated`,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to deactivate game set');
-      }
-
-      console.log('Game set deactivated successfully, refreshing data...');
 
       // Invalidate and refresh all relevant queries
       await Promise.all([
@@ -244,7 +254,13 @@ export default function HomePage() {
 
     } catch (error) {
       console.error('Error ending game set:', error);
-      alert(`Failed to end game set: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Show error toast instead of alert
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to end game set",
+        variant: "destructive"
+      });
     }
   };
 

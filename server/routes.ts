@@ -8,6 +8,31 @@ import { MoveType } from "./game-logic/types";
 import { db } from "./db";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { cleanupDuplicateCheckins } from "./cleanup";
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+/**
+ * Executes a scootd command and returns the result
+ * @param command The scootd command to execute
+ * @returns The command output (stdout)
+ */
+async function executeScootd(command: string): Promise<string> {
+  try {
+    console.log(`Executing scootd command: ${command}`);
+    const { stdout, stderr } = await execAsync(`./scootd ${command}`);
+    
+    if (stderr) {
+      console.error(`scootd stderr: ${stderr}`);
+    }
+    
+    return stdout;
+  } catch (error) {
+    console.error(`Error executing scootd command: ${error}`);
+    throw error;
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -454,6 +479,199 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Queue position fixed", gameSetId: activeGameSet.id });
     } catch (error) {
       console.error('POST /api/game-sets/fix-queue-position - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // New endpoints using scootd
+  app.get("/api/scootd/game-set-status/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const gameSetId = parseInt(req.params.id);
+      const output = await executeScootd(`game-set-status ${gameSetId} json`);
+      
+      // Parse the output to extract just the JSON part (ignoring connection messages)
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        throw new Error("Invalid output format from scootd");
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('GET /api/scootd/game-set-status/:id - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/scootd/checkin", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, userId } = req.body;
+      
+      if (!gameSetId || !userId) {
+        return res.status(400).json({ error: "Missing gameSetId or userId" });
+      }
+      
+      // Get username for logging/feedback
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Execute the scootd checkin command
+      const output = await executeScootd(`checkin ${gameSetId} ${userId} json`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // If there's no JSON in the response, format a success message
+        return res.json({ 
+          success: true, 
+          message: `Player ${user.username} successfully checked in to game set ${gameSetId}`,
+          raw: output
+        });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/checkin - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/scootd/checkout", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, queuePosition, userId } = req.body;
+      
+      if (!gameSetId || !queuePosition || !userId) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameSetId, queuePosition, userId" 
+        });
+      }
+      
+      // Execute the scootd checkout command
+      const output = await executeScootd(`checkout ${gameSetId} ${queuePosition} ${userId} json`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/checkout - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/scootd/bump-player", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, queuePosition, userId } = req.body;
+      
+      if (!gameSetId || !queuePosition || !userId) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameSetId, queuePosition, userId" 
+        });
+      }
+      
+      // Execute the scootd bump-player command
+      const output = await executeScootd(`bump-player ${gameSetId} ${queuePosition} ${userId} json`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/bump-player - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/scootd/end-game", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameId, homeScore, awayScore, autoPromote } = req.body;
+      
+      if (!gameId || homeScore === undefined || awayScore === undefined) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameId, homeScore, awayScore" 
+        });
+      }
+      
+      // Construct the command, adding autoPromote if specified
+      let command = `end-game ${gameId} ${homeScore} ${awayScore}`;
+      if (autoPromote !== undefined) {
+        command += ` ${autoPromote}`;
+      }
+      command += " json"; // Always get JSON response
+      
+      // Execute the scootd end-game command
+      const output = await executeScootd(command);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/end-game - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/scootd/new-game", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, court } = req.body;
+      
+      if (!gameSetId || !court) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameSetId, court" 
+        });
+      }
+      
+      // Execute the scootd propose-game command with create flag
+      const output = await executeScootd(`propose-game ${gameSetId} ${court} json true`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/new-game - Error:', error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
