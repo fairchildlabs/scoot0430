@@ -201,7 +201,7 @@ void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *stat
         return;
     }
     
-    int checkin_id = atoi(PQgetvalue(res, 0, 0));
+    // We retrieve the ID but don't need to use it for anything
     PQclear(res);
     
     // Update the game set's queue tracking
@@ -428,7 +428,7 @@ void checkout_player(PGconn *conn, int game_set_id, int queue_position, int user
         return;
     }
     
-    int checkin_id = atoi(PQgetvalue(res, 0, 0));
+    int checkin_id = atoi(PQgetvalue(res, 0, 0)); // We need this ID for the update below
     const char *username = PQgetvalue(res, 0, 2);
     PQclear(res);
     
