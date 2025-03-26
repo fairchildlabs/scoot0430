@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Loader2, X, HandMetal, ArrowLeftRight, ArrowDown } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Redirect } from "wouter";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, scootdApiRequest } from "@/lib/queryClient";
 import { type InsertGame } from "@shared/schema";
-import { Progress } from "@/components/ui/progress";
+
 
 const NewGamePage = () => {
   const { user } = useAuth();
@@ -185,46 +185,8 @@ const NewGamePage = () => {
     }
   });
 
-  const playerMoveMutation = useMutation({
-    mutationFn: async ({ playerId, moveType, playerNumber }: { playerId: number, moveType: string, playerNumber: number }) => {
-      if (!activeGameSet) throw new Error("No active game set");
-
-      try {
-        const res = await apiRequest("POST", "/api/player-move", {
-          playerId,
-          moveType,
-          setId: activeGameSet.id
-        });
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText || "Failed to process player move");
-        }
-        return { ...(await res.json()), playerNumber };
-      } catch (error) {
-        console.error('Player move error:', error);
-        throw error;
-      }
-    },
-    onSuccess: (data) => {
-      // Invalidate relevant queries to refresh the data
-      queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] });
-
-      // Use the message from the server response, which has our detailed player swap info
-      setStatusMessage(data.message || `Player #${data.playerNumber} action completed successfully`);
-
-      // Clear status message after 3 seconds
-      setTimeout(() => setStatusMessage(''), 3000);
-    },
-    onError: (error: Error) => {
-      console.error('Player move failed:', error);
-      setStatusMessage(`Error: ${error.message}`);
-
-      // Clear error message after 5 seconds
-      setTimeout(() => setStatusMessage(''), 5000);
-    }
-  });
+  // We've removed the playerMoveMutation as it's not needed anymore
+  // Player movements (checkout, bump, swap) will now be handled via scootd API directly
 
   // If no active game set or it's invalid (id = 0), return early
   if (!activeGameSet || activeGameSet.id === 0) {
@@ -383,55 +345,8 @@ const NewGamePage = () => {
     return (currentYear - birthYear) >= 75;
   };
 
-  // Add a new mutation for scootd player operations
-  const scootdPlayerMutation = useMutation({
-    mutationFn: async ({ 
-      command,
-      userId, 
-      gameSetId, 
-      queuePosition
-    }: { 
-      command: string;  // 'checkout' or 'bump-player' 
-      userId: number;
-      gameSetId: number;
-      queuePosition: number;
-    }) => {
-      try {
-        // Call the scootd API wrapper
-        return await scootdApiRequest<any>(
-          "POST", 
-          command, 
-          {
-            user_id: userId,
-            game_set_id: gameSetId,
-            queue_position: queuePosition,
-            "status-format": "json"
-          }
-        );
-      } catch (error) {
-        console.error(`Scootd ${command} error:`, error);
-        throw error;
-      }
-    },
-    onSuccess: (data) => {
-      // Invalidate relevant queries to refresh the data
-      queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/game-sets/active"] });
-      
-      // Display status message from the scootd response
-      setStatusMessage(data.message || `Player operation completed successfully`);
-      
-      // Clear status message after 3 seconds
-      setTimeout(() => setStatusMessage(''), 3000);
-    },
-    onError: (error: Error) => {
-      console.error('Scootd operation failed:', error);
-      setStatusMessage(`Error: ${error.message}`);
-      
-      // Clear error message after 5 seconds
-      setTimeout(() => setStatusMessage(''), 5000);
-    }
-  });
+  // We've removed the scootdPlayerMutation as it's not needed anymore
+  // This implements the user's request to remove checkout/bump/swap buttons
 
   const PlayerCard = ({ player, index, isNextUp = false, isAway = false }: { player: any; index: number; isNextUp?: boolean; isAway?: boolean }) => {
     // Helper function to get promotion badge text
@@ -509,7 +424,7 @@ const NewGamePage = () => {
     );
   };
 
-  const isLoading = playerMoveMutation.isPending || createGameMutation.isPending;
+  const isLoading = createGameMutation.isPending;
 
   const playersCheckedIn = checkins?.length || 0;
 
