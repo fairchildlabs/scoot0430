@@ -98,6 +98,7 @@ interface GameSetStatus {
   nextUp: {
     username: string;
     queuePosition: number;
+    position?: number;  // Added position field to handle API response format
     type: string;
     team: number | null;
     birthYear?: number;
@@ -174,13 +175,21 @@ export default function HomePage() {
         ],
         
         // Transform next up players for UI
-        nextUp: (data.next_up_players || []).map((p: any) => ({
-          username: p.username,
-          queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
-          type: p.type,
-          team: p.team,
-          birthYear: p.birth_year
-        }))
+        nextUp: (data.next_up_players || []).map((p: any) => {
+          // Get the position (queue position) from the API response
+          // The scootd API uses 'position' whereas our UI expects 'queuePosition'
+          const position = typeof p.position === 'number' ? p.position : 
+                           typeof p.queue_position === 'number' ? p.queue_position : 
+                           0;
+          
+          return {
+            username: p.username,
+            queuePosition: position,
+            type: p.type || "",
+            team: p.team || null,
+            birthYear: p.birth_year
+          };
+        })
       };
       
       setGameSetStatus(transformedData);
@@ -232,6 +241,17 @@ export default function HomePage() {
 
   // Get players for the NEXT_UP list from the gameSetStatus
   const nextUpPlayers = gameSetStatus?.nextUp || [];
+  
+  // Map position if queue_position is not defined
+  const mappedNextUpPlayers = nextUpPlayers.map(player => {
+    // Get position from the API response, which is available as 'position'
+    // in the next_up_players array, but our UI component expects 'queuePosition'
+    const pos = player.queuePosition; // Default to existing queuePosition
+    return {
+      ...player,
+      queuePosition: pos
+    };
+  });
   
   // Add debugging for nextUpPlayers
   console.log('Next up players with their types:', nextUpPlayers.map(p => ({
@@ -338,24 +358,27 @@ export default function HomePage() {
           console.log('Updated game set status with direct response data:', response);
         } else if ('active_games' in response || 'game_set' in response) {
           // Response is in scootd format, need to transform
+          // Type cast the response to access its properties safely
+          const scootdResponse = response as any;
+          
           const transformedData: GameSetStatus = {
-            id: response.game_set?.id || 0,
-            gym: response.game_set_info?.gym || "",
-            playersPerTeam: response.game_set_info?.max_consecutive_games || 4,
-            numberOfCourts: response.game_set_info?.number_of_courts || 1,
-            currentQueuePosition: response.game_set_info?.current_queue_position || 0,
-            createdAt: response.game_set_info?.created_at || new Date().toISOString(),
+            id: scootdResponse.game_set?.id || 0,
+            gym: scootdResponse.game_set_info?.gym || "",
+            playersPerTeam: scootdResponse.game_set_info?.max_consecutive_games || 4,
+            numberOfCourts: scootdResponse.game_set_info?.number_of_courts || 1,
+            currentQueuePosition: scootdResponse.game_set_info?.current_queue_position || 0,
+            createdAt: scootdResponse.game_set_info?.created_at || new Date().toISOString(),
             
             // Original fields from scootd
-            game_set: response.game_set,
-            game_set_info: response.game_set_info,
-            active_games: response.active_games || [],
-            next_up_players: response.next_up_players || [],
-            recent_completed_games: response.recent_completed_games || [],
+            game_set: scootdResponse.game_set,
+            game_set_info: scootdResponse.game_set_info,
+            active_games: scootdResponse.active_games || [],
+            next_up_players: scootdResponse.next_up_players || [],
+            recent_completed_games: scootdResponse.recent_completed_games || [],
             
             // Transform games for UI
             games: [
-              ...(response.active_games || []).map((g: any) => ({
+              ...(scootdResponse.active_games || []).map((g: any) => ({
                 id: g.id,
                 court: g.court,
                 state: g.state,
@@ -370,7 +393,7 @@ export default function HomePage() {
                   birthYear: p.birth_year
                 }))
               })),
-              ...(response.recent_completed_games || []).map((g: any) => ({
+              ...(scootdResponse.recent_completed_games || []).map((g: any) => ({
                 id: g.id,
                 court: g.court,
                 state: g.state || 'final',
@@ -388,13 +411,21 @@ export default function HomePage() {
             ],
             
             // Transform next up players for UI
-            nextUp: (response.next_up_players || []).map((p: any) => ({
-              username: p.username,
-              queuePosition: p.position || p.queue_position, // Handle both position and queue_position fields
-              type: p.type,
-              team: p.team,
-              birthYear: p.birth_year
-            }))
+            nextUp: (scootdResponse.next_up_players || []).map((p: any) => {
+              // Get the position (queue position) from the API response
+              // The scootd API uses 'position' whereas our UI expects 'queuePosition'
+              const position = typeof p.position === 'number' ? p.position : 
+                              typeof p.queue_position === 'number' ? p.queue_position : 
+                              0;
+              
+              return {
+                username: p.username,
+                queuePosition: position,
+                type: p.type || "",
+                team: p.team || null,
+                birthYear: p.birth_year
+              };
+            })
           };
           
           setGameSetStatus(transformedData);
@@ -589,8 +620,11 @@ export default function HomePage() {
     </Card>
   );
 
-  const canEndGames = !!user?.is_admin;
-  const canEndSet = !!user?.is_admin;
+  // Use admin status from user object, either is_admin or defaulting to the autoup flag
+  // (where autoup might be used to indicate administrative privileges)
+  const isUserAdmin = !!user?.is_admin || (user?.autoup === true);
+  const canEndGames = isUserAdmin;
+  const canEndSet = isUserAdmin;
   const activeGameSet = gameSetStatus?.game_set_info;
 
   return (
@@ -609,7 +643,7 @@ export default function HomePage() {
           <div className="mb-4 md:mb-0">
             <h1 className="text-3xl font-bold text-foreground">Scoot</h1>
             <p className="text-muted-foreground">
-              {gameSetStatus?.gym} - {activeGameSet?.active_games?.length || 0} active courts
+              {gameSetStatus?.gym} - {activeGamesList?.length || 0} active courts
             </p>
           </div>
           <div className="flex flex-col items-center md:items-end">
@@ -661,7 +695,7 @@ export default function HomePage() {
                 {nextUpPlayers.length === 0 ? (
                   <p className="text-muted-foreground col-span-full text-center py-4">No players in queue</p>
                 ) : (
-                  nextUpPlayers.map((player) => (
+                  mappedNextUpPlayers.map((player) => (
                     <Card key={player.username} className="bg-white">
                       <CardContent className="p-3">
                         <div className="flex flex-col items-center">
