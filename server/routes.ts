@@ -484,6 +484,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // New endpoints using scootd
+  
+  // Endpoint to get the active game set status
+  app.get("/api/scootd/game-set-status", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      // Get the active game set
+      const activeGameSet = await storage.getActiveGameSet();
+      
+      if (!activeGameSet) {
+        return res.status(404).json({ error: "No active game set found" });
+      }
+      
+      // Use the active game set ID
+      const output = await executeScootd(`game-set-status ${activeGameSet.id} json`);
+      
+      // Parse the output to extract just the JSON part (ignoring connection messages)
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        throw new Error("Invalid output format from scootd");
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('GET /api/scootd/game-set-status - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+  
+  // Endpoint to get a specific game set status by ID
   app.get("/api/scootd/game-set-status/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
