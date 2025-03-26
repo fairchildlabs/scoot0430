@@ -244,12 +244,17 @@ export default function HomePage() {
   
   // Map position if queue_position is not defined
   const mappedNextUpPlayers = nextUpPlayers.map(player => {
-    // Get position from the API response, which is available as 'position'
-    // in the next_up_players array, but our UI component expects 'queuePosition'
-    const pos = player.queuePosition; // Default to existing queuePosition
+    // Get position from the API response
+    // The API uses 'position' but our UI expects 'queuePosition' 
+    // pos is what's shown in our debug logs
+    const position = (player as any).pos || 
+                    (player as any).position || 
+                    (player as any).queue_position || 
+                    player.queuePosition || 0;
+    
     return {
       ...player,
-      queuePosition: pos
+      queuePosition: position
     };
   });
   
@@ -620,9 +625,9 @@ export default function HomePage() {
     </Card>
   );
 
-  // Use admin status from user object, either is_admin or defaulting to the autoup flag
+  // Use admin status from user object, either isAdmin (custom property) or autoup flag
   // (where autoup might be used to indicate administrative privileges)
-  const isUserAdmin = !!user?.is_admin || (user?.autoup === true);
+  const isUserAdmin = !!(user as any)?.isAdmin || (user?.autoup === true);
   const canEndGames = isUserAdmin;
   const canEndSet = isUserAdmin;
   const activeGameSet = gameSetStatus?.game_set_info;
