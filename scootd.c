@@ -1132,6 +1132,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
     bool is_active = strcmp(PQgetvalue(res, 0, 8), "t") == 0;
     int max_consecutive_games = atoi(PQgetvalue(res, 0, 4));
     
+    // Store more game set details for info section
+    char *creator = PQgetvalue(res, 0, 1);
+    char *gym = PQgetvalue(res, 0, 2);
+    char *number_of_courts = PQgetvalue(res, 0, 3);
+    char *created_at = PQgetvalue(res, 0, 7);
+    
     PQclear(res);
     
     // Format output based on format parameter
@@ -1142,6 +1148,19 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         printf("    \"current_position\": %d,\n", current_position);
         printf("    \"queue_next_up\": %d,\n", queue_next_up);
         printf("    \"max_consecutive_games\": %d\n", max_consecutive_games);
+        printf("  },\n");
+        
+        // Add game-set-info section with details from active-game-set
+        printf("  \"game_set_info\": {\n");
+        printf("    \"id\": %d,\n", game_set_id);
+        printf("    \"created_by\": \"%s\",\n", creator);
+        printf("    \"gym\": \"%s\",\n", gym);
+        printf("    \"number_of_courts\": %s,\n", number_of_courts);
+        printf("    \"max_consecutive_games\": %d,\n", max_consecutive_games);
+        printf("    \"current_queue_position\": %d,\n", current_position);
+        printf("    \"queue_next_up\": %d,\n", queue_next_up);
+        printf("    \"created_at\": \"%s\",\n", created_at);
+        printf("    \"is_active\": %s\n", is_active ? "true" : "false");
         printf("  },\n");
         
         // Get active games
@@ -1306,6 +1325,18 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
         printf("Current Position: %d\n", current_position);
         printf("Queue Next Up: %d\n", queue_next_up);
         printf("Max Consecutive Games: %d\n\n", max_consecutive_games);
+        
+        // Add game-set-info section with details from active-game-set
+        printf("==== Game Set Info ====\n");
+        printf("ID: %d\n", game_set_id);
+        printf("Created by: %s\n", creator);
+        printf("Gym: %s\n", gym);
+        printf("Number of courts: %s\n", number_of_courts);
+        printf("Max consecutive games: %d\n", max_consecutive_games);
+        printf("Current queue position: %d\n", current_position);
+        printf("Queue next up: %d\n", queue_next_up);
+        printf("Created at: %s\n", created_at);
+        printf("Active: %s\n\n", is_active ? "Yes" : "No");
         
         // Get active games
         sprintf(query, 
@@ -2320,14 +2351,12 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s <command> [args...]\n", argv[0]);
         printf("Available commands:\n");
         printf("  users - List all users\n");
-        printf("  active-games - List active games\n");
-        printf("  active-game-set - Show active game set details\n");
         printf("  checkout <game_set_id> <queue_position> <user_id> [format] - Check out a player from the queue and adjust queue positions (format: none|text|json, default: none)\n");
         printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
         printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
         printf("  new-game <game_set_id> <court> [format] - Create a new game with next available players (format: text|json, default: text)\n");
-        printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including active games, next-up players, and completed games\n");
+        printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including game set info, active games, next-up players, and completed games\n");
         printf("  end-game <game_id> <home_score> <away_score> [autopromote] [format] - End a game with the given scores and return the game set status (autopromote: true/false, default is true; format: none|text|json, default is none)\n");
         printf("  bump-player <game_set_id> <queue_position> <user_id> [format] - Swap a player with the next player below in the queue (format: none|text|json, default is none)\n");
         return 1;
@@ -2345,10 +2374,6 @@ int main(int argc, char *argv[]) {
     // Process commands
     if (strcmp(command, "users") == 0) {
         list_users(conn);
-    } else if (strcmp(command, "active-games") == 0) {
-        list_active_games(conn);
-    } else if (strcmp(command, "active-game-set") == 0) {
-        show_active_game_set(conn);
     } else if (strcmp(command, "checkout") == 0) {
         if (argc < 5) {
             fprintf(stderr, "Usage: %s checkout <game_set_id> <queue_position> <user_id> [format]\n", argv[0]);
