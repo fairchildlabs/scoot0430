@@ -45,6 +45,200 @@ bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, in
 void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *status_format);
 
 /**
+ * Check in a player to a game set
+ * 
+ * @param conn Database connection
+ * @param game_set_id The ID of the game set to check into
+ * @param user_id The ID of the user to check in
+ * @param status_format Format to display game set status after checkin (none|text|json)
+ */
+void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *status_format) {
+    char query[4096];
+    PGresult *res;
+    int club_index = 34; // Fixed club index for now
+    
+    // Start a transaction
+    res = PQexec(conn, "BEGIN");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        return;
+    }
+    PQclear(res);
+    
+    // Verify game set exists and is active
+    snprintf(query, sizeof(query), 
+        "SELECT id, is_active FROM game_sets WHERE id = %d", 
+        game_set_id);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query game set: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "Game set %d does not exist\n", game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    bool is_active = strcmp(PQgetvalue(res, 0, 1), "t") == 0;
+    if (!is_active) {
+        fprintf(stderr, "Game set %d is not active\n", game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Check if user exists
+    snprintf(query, sizeof(query), 
+        "SELECT id, username FROM users WHERE id = %d", 
+        user_id);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query user: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "User with ID %d does not exist\n", user_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    char username[256];
+    strncpy(username, PQgetvalue(res, 0, 1), sizeof(username) - 1);
+    username[sizeof(username) - 1] = '\0';
+    PQclear(res);
+    
+    // Check if user already has an active checkin in this game set
+    snprintf(query, sizeof(query), 
+        "SELECT id, queue_position FROM checkins "
+        "WHERE user_id = %d AND game_set_id = %d AND is_active = true", 
+        user_id, game_set_id);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query existing checkins: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) > 0) {
+        int existing_position = atoi(PQgetvalue(res, 0, 1));
+        printf("User %s is already checked in at position %d\n", username, existing_position);
+        PQclear(res);
+        
+        // Commit the transaction
+        res = PQexec(conn, "COMMIT");
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+            fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
+            PQclear(res);
+            return;
+        }
+        PQclear(res);
+        
+        // Show game set status if requested
+        if (status_format && strcmp(status_format, "none") != 0) {
+            get_game_set_status(conn, game_set_id, status_format);
+        }
+        
+        return;
+    }
+    PQclear(res);
+    
+    // Find the highest queue position currently in use
+    snprintf(query, sizeof(query), 
+        "SELECT COALESCE(MAX(queue_position), 0) FROM checkins "
+        "WHERE game_set_id = %d AND is_active = true", 
+        game_set_id);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query highest position: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int next_position = atoi(PQgetvalue(res, 0, 0)) + 1;
+    PQclear(res);
+    
+    // Get current time in the required format
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    char check_in_time[30];
+    char check_in_date[11];
+    
+    strftime(check_in_time, sizeof(check_in_time), "%Y-%m-%d %H:%M:%S", tm_info);
+    strftime(check_in_date, sizeof(check_in_date), "%Y-%m-%d", tm_info);
+    
+    // Create the new checkin
+    snprintf(query, sizeof(query), 
+        "INSERT INTO checkins "
+        "(user_id, club_index, check_in_time, is_active, check_in_date, "
+        "game_set_id, queue_position, type, game_id, team) "
+        "VALUES (%d, %d, '%s', true, '%s', %d, %d, 'manual', NULL, NULL) "
+        "RETURNING id", 
+        user_id, club_index, check_in_time, check_in_date, 
+        game_set_id, next_position);
+    
+    res = PQexec(conn, query);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to create checkin: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int checkin_id = atoi(PQgetvalue(res, 0, 0));
+    PQclear(res);
+    
+    // Update the game set's queue tracking
+    snprintf(query, sizeof(query), 
+        "UPDATE game_sets "
+        "SET current_queue_position = 1, queue_next_up = %d "
+        "WHERE id = %d",
+        next_position + 1, game_set_id);
+    
+    res = PQexec(conn, query);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Failed to update game set queue tracking: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Commit the transaction
+    res = PQexec(conn, "COMMIT");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        return;
+    }
+    PQclear(res);
+    
+    printf("Player %s successfully checked in to game set %d at position %d\n", 
+        username, game_set_id, next_position);
+    
+    // Show game set status if requested
+    if (status_format && strcmp(status_format, "none") != 0) {
+        get_game_set_status(conn, game_set_id, status_format);
+    }
+}
+
+/**
  * Connect to the PostgreSQL database using environment variables
  */
 PGconn *connect_to_db() {
@@ -2609,6 +2803,41 @@ int main(int argc, char *argv[]) {
         }
         
         bump_player(conn, game_set_id, queue_position, user_id, status_format);
+    } else if (strcmp(command, "checkin") == 0) {
+        if (argc < 4) {
+            fprintf(stderr, "Usage: %s checkin <game_set_id> <user_id> [format]\n", argv[0]);
+            fprintf(stderr, "  format: none|text|json (default: none)\n");
+            fprintf(stderr, "  Check in a player to a game set\n");
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        if (game_set_id <= 0) {
+            fprintf(stderr, "Invalid game_set_id: %s\n", argv[2]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int user_id = atoi(argv[3]);
+        if (user_id <= 0) {
+            fprintf(stderr, "Invalid user_id: %s\n", argv[3]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        // Get output format (default is none)
+        const char *status_format = "none";
+        if (argc >= 5) {
+            status_format = argv[4];
+            if (strcmp(status_format, "none") != 0 && strcmp(status_format, "text") != 0 && strcmp(status_format, "json") != 0) {
+                fprintf(stderr, "Invalid format: %s (should be 'none', 'text', or 'json')\n", status_format);
+                PQfinish(conn);
+                return 1;
+            }
+        }
+        
+        checkin_player(conn, game_set_id, user_id, status_format);
     } else {
         fprintf(stderr, "Unknown command: %s\n", command);
     }
