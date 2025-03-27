@@ -3,7 +3,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowUp, LogOut } from "lucide-react";
 import { ScootLogo } from "@/components/logos/scoot-logo";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -458,6 +458,74 @@ export default function HomePage() {
     }
   };
 
+  // Handle player bump action (for engineers and admin only)
+  const handleBumpPlayer = async (gameSetId: number | undefined, queuePosition: number, userId: number) => {
+    if (!gameSetId) return;
+    
+    try {
+      // Call the scootd bump-player API
+      const response = await scootdApiRequest("POST", "bump-player", {
+        gameSetId,
+        queuePosition,
+        userId
+      });
+      
+      console.log('Bump player response:', response);
+      
+      // Show success toast
+      toast({
+        title: "Player Bumped",
+        description: `Player at position #${queuePosition} has been bumped`,
+      });
+      
+      // Refresh game set status
+      await fetchGameSetStatus();
+    } catch (error) {
+      console.error('Error bumping player:', error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to bump player",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Handle player checkout action (for engineers and admin only)
+  const handleCheckoutPlayer = async (gameSetId: number | undefined, queuePosition: number, userId: number) => {
+    if (!gameSetId) return;
+    
+    try {
+      // Call the scootd checkout API
+      const response = await scootdApiRequest("POST", "checkout", {
+        gameSetId,
+        queuePosition,
+        userId
+      });
+      
+      console.log('Checkout player response:', response);
+      
+      // Show success toast
+      toast({
+        title: "Player Checked Out",
+        description: `Player at position #${queuePosition} has been checked out`,
+      });
+      
+      // Refresh game set status
+      await fetchGameSetStatus();
+    } catch (error) {
+      console.error('Error checking out player:', error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to check out player",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Function to handle ending the entire game set
   const handleEndSet = async (gameSetId: number) => {
     if (!window.confirm("Are you sure you want to end this game set? This will deactivate the set and all associated check-ins.")) {
@@ -749,9 +817,31 @@ export default function HomePage() {
                                 )}
                               </span>
                             </div>
-                            {isOG(player.birthYear) && (
-                              <span className="text-white font-bold">OG</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {isOG(player.birthYear) && (
+                                <span className="text-white font-bold">OG</span>
+                              )}
+                              {(user?.isRoot || user?.isEngineer) && (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost"
+                                    onClick={() => handleBumpPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)} 
+                                    title="Bump Player"
+                                  >
+                                    <ArrowUp className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost"
+                                    onClick={() => handleCheckoutPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
+                                    title="Checkout Player"
+                                  >
+                                    <LogOut className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
