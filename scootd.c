@@ -2311,7 +2311,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         
         // Get players to promote
         sprintf(query, 
-                "SELECT gp.user_id, u.username, u.autoup "
+                "SELECT gp.user_id, u.username, u.autoup, gp.team "
                 "FROM game_players gp "
                 "JOIN users u ON gp.user_id = u.id "
                 "WHERE gp.game_id = %d AND gp.team = %d "
@@ -2333,6 +2333,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         for (int i = 0; i < player_count; i++) {
             int user_id = atoi(PQgetvalue(res, i, 0));
             const char *username = PQgetvalue(res, i, 1);
+            int player_team = atoi(PQgetvalue(res, i, 3));
             // We don't need relative_position anymore since we're using sequential numbers
             
             // Calculate new queue position sequentially for all players, not just by relative position
@@ -2340,12 +2341,13 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             int new_position = current_queue_position + i;
             
             // Store the team for promoted players so they can play on the same team next time
+            // For loss-promoted players, we want to maintain their original team assignment
             char insert_query[512];
             sprintf(insert_query, 
                     "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, team, check_in_time, check_in_date) "
                     "VALUES (%d, %d, 34, %d, true, '%s', %d, NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                     "RETURNING id",
-                    user_id, set_id, new_position, promotion_type, team_to_promote);
+                    user_id, set_id, new_position, promotion_type, player_team);
             
             PGresult *insert_res = PQexec(conn, insert_query);
             if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
