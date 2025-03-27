@@ -325,7 +325,7 @@ function EditUserDialog({ user, open, onClose }: { user: any; open: boolean; onC
                        onCheckedChange={field.onChange}
                      />
                    </FormControl>
-                   <FormLabel className="!mt-0">Gym Manager</FormLabel>
+                   <FormLabel className="!mt-0">Gym</FormLabel>
                  </FormItem>
                )}
              />
@@ -364,7 +364,7 @@ export default function UserManagementPage() {
      isBank: false,
      isBook: false,
      isEngineer: false,
-     isRoot: false,
+     isRoot: false, // Hidden from form but still tracked
      isGym: false,
    },
  });
@@ -1016,21 +1016,7 @@ export default function UserManagementPage() {
                          </FormItem>
                        )}
                      />
-                     <FormField
-                       control={registerForm.control}
-                       name="isRoot"
-                       render={({ field }) => (
-                         <FormItem className="flex items-center space-x-2">
-                           <FormControl>
-                             <Checkbox
-                               checked={field.value}
-                               onCheckedChange={field.onChange}
-                             />
-                           </FormControl>
-                           <FormLabel className="!mt-0">Root</FormLabel>
-                         </FormItem>
-                       )}
-                     />
+
                      <FormField
                        control={registerForm.control}
                        name="isGym"
@@ -1042,7 +1028,7 @@ export default function UserManagementPage() {
                                onCheckedChange={field.onChange}
                              />
                            </FormControl>
-                           <FormLabel className="!mt-0">Gym Manager</FormLabel>
+                           <FormLabel className="!mt-0">Gym</FormLabel>
                          </FormItem>
                        )}
                      />
