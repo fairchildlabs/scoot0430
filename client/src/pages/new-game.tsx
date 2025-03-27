@@ -498,7 +498,7 @@ const NewGamePage = () => {
                   onClick={() => proposeGameMutation.mutate()}
                   disabled={proposeGameMutation.isPending}
                 >
-                  {proposeGameMutation.isPending ? "Proposing..." : "Propose Game"}
+                  {proposeGameMutation.isPending ? "Creating..." : "Create Game"}
                 </Button>
               ) : (
                 <Button
