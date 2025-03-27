@@ -752,8 +752,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Execute the scootd propose-game command with create flag
-      const output = await executeScootd(`propose-game ${gameSetId} ${court} json true`);
+      // Execute the scootd new-game command instead of propose-game with create flag
+      const output = await executeScootd(`new-game ${gameSetId} ${court} json`);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
