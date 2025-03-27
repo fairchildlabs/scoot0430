@@ -2364,12 +2364,12 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         
         // First, update the game_sets.queue_next_up to correctly reflect the 
         // positions after win_promoted players have been added
-        // It should be current_queue_position + 2*PLAYERS_PER_TEAM (promoted team + autoup players)
+        // Increment queue_next_up by the actual number of players promoted
         sprintf(query, 
-                "UPDATE game_sets SET queue_next_up = current_queue_position + %d "
+                "UPDATE game_sets SET queue_next_up = queue_next_up + %d "
                 "WHERE id = %d "
                 "RETURNING queue_next_up",
-                2 * PLAYERS_PER_TEAM, set_id);
+                player_count, set_id);
         
         PGresult *update_next_up_res = PQexec(conn, query);
         if (PQresultStatus(update_next_up_res) == PGRES_TUPLES_OK) {
