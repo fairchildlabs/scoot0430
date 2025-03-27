@@ -20,16 +20,33 @@ const execAsync = promisify(exec);
  */
 async function executeScootd(command: string): Promise<string> {
   try {
-    console.log(`Executing scootd command: ${command}`);
+    console.log(`\n===== SCOOTD COMMAND EXECUTION =====`);
+    console.log(`🔵 EXECUTING: ./scootd ${command}`);
+    
     const { stdout, stderr } = await execAsync(`./scootd ${command}`);
     
     if (stderr) {
-      console.error(`scootd stderr: ${stderr}`);
+      console.error(`🔴 SCOOTD ERROR OUTPUT: ${stderr}`);
     }
     
+    console.log(`✅ SCOOTD RAW OUTPUT: ${stdout.substring(0, 300)}${stdout.length > 300 ? '...(truncated)' : ''}`);
+    
+    // Try to extract and log JSON if present
+    const jsonStartIndex = stdout.indexOf('{');
+    if (jsonStartIndex !== -1) {
+      try {
+        const jsonStr = stdout.substring(jsonStartIndex);
+        const jsonData = JSON.parse(jsonStr);
+        console.log(`📊 PARSED JSON DATA:`, JSON.stringify(jsonData, null, 2));
+      } catch (jsonError) {
+        console.error(`⚠️ FAILED TO PARSE JSON FROM OUTPUT:`, jsonError);
+      }
+    }
+    
+    console.log(`===== END SCOOTD EXECUTION =====\n`);
     return stdout;
   } catch (error) {
-    console.error(`Error executing scootd command: ${error}`);
+    console.error(`\n🚨 SCOOTD EXECUTION FAILED:`, error);
     throw error;
   }
 }
@@ -643,7 +660,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
-      console.log('POST /api/scootd/end-game - Request body:', req.body);
       const { gameId, homeScore, awayScore, autoPromote } = req.body;
       
       if (!gameId || homeScore === undefined || awayScore === undefined) {
@@ -660,26 +676,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       command += " json"; // Always get JSON response
       
-      console.log('POST /api/scootd/end-game - Executing command:', command);
-      
       // Execute the scootd end-game command
       const output = await executeScootd(command);
-      console.log('POST /api/scootd/end-game - Raw output:', output);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
       if (jsonStartIndex === -1) {
         // For commands without JSON response, return the raw output
-        console.log('POST /api/scootd/end-game - No JSON found in output, returning raw output');
         return res.json({ success: true, raw: output });
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      console.log('POST /api/scootd/end-game - JSON string:', jsonStr);
       
       try {
         const data = JSON.parse(jsonStr);
-        console.log('POST /api/scootd/end-game - Parsed JSON response:', data);
         res.json(data);
       } catch (jsonError) {
         console.error('POST /api/scootd/end-game - Error parsing JSON:', jsonError);
@@ -698,31 +708,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { gameSetId, court } = req.body;
       
       if (!gameSetId || !court) {
+        console.log('POST /api/scootd/propose-game - Missing required parameters:', { gameSetId, court });
         return res.status(400).json({ 
           error: "Missing required parameters: gameSetId, court" 
         });
       }
       
-      console.log('POST /api/scootd/propose-game - Executing command:', `propose-game ${gameSetId} ${court} json`);
-      
       // Execute the scootd propose-game command WITHOUT create flag
       const output = await executeScootd(`propose-game ${gameSetId} ${court} json`);
-      console.log('POST /api/scootd/propose-game - Raw output:', output);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
       if (jsonStartIndex === -1) {
         // For commands without JSON response, return the raw output
-        console.log('POST /api/scootd/propose-game - No JSON found in output, returning raw output');
         return res.json({ success: true, raw: output });
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      console.log('POST /api/scootd/propose-game - JSON string:', jsonStr);
       
       try {
         const data = JSON.parse(jsonStr);
-        console.log('POST /api/scootd/propose-game - Parsed JSON response:', data);
         res.json(data);
       } catch (jsonError) {
         console.error('POST /api/scootd/propose-game - Error parsing JSON:', jsonError);
@@ -741,31 +746,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { gameSetId, court } = req.body;
       
       if (!gameSetId || !court) {
+        console.log('POST /api/scootd/new-game - Missing required parameters:', { gameSetId, court });
         return res.status(400).json({ 
           error: "Missing required parameters: gameSetId, court" 
         });
       }
       
-      console.log('POST /api/scootd/new-game - Executing command:', `propose-game ${gameSetId} ${court} json true`);
-      
       // Execute the scootd propose-game command with create flag
       const output = await executeScootd(`propose-game ${gameSetId} ${court} json true`);
-      console.log('POST /api/scootd/new-game - Raw output:', output);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
       if (jsonStartIndex === -1) {
         // For commands without JSON response, return the raw output
-        console.log('POST /api/scootd/new-game - No JSON found in output, returning raw output');
         return res.json({ success: true, raw: output });
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      console.log('POST /api/scootd/new-game - JSON string:', jsonStr);
       
       try {
         const data = JSON.parse(jsonStr);
-        console.log('POST /api/scootd/new-game - Parsed JSON response:', data);
         res.json(data);
       } catch (jsonError) {
         console.error('POST /api/scootd/new-game - Error parsing JSON:', jsonError);

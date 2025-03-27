@@ -42,7 +42,7 @@ export async function scootdApiRequest<T>(
   const res = await apiRequest(method, url, data);
   const responseData = await res.json();
   
-  console.log(`📥 SCOOTD API RESPONSE: ${endpoint}`, responseData);
+  console.log(`📥 SCOOTD API RESPONSE (${endpoint}):`, JSON.stringify(responseData, null, 2));
   return responseData;
 }
 
