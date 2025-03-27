@@ -115,12 +115,21 @@ interface GameSetStatus {
   }[];
 }
 
-export default function HomePage() {
+interface HomePageProps {
+  id?: string; // For route params
+  gameSetId?: number; // For directly passing a game set ID
+}
+
+export default function HomePage({ id, gameSetId }: HomePageProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number }>>({});
   const { toast } = useToast();
+  
+  // Use the route param ID if provided, otherwise use the direct prop
+  const targetGameSetId = id ? parseInt(id) : gameSetId;
+  const isHistoricalView = !!targetGameSetId;
   
   // State for scootd-based data
   const [gameSetStatus, setGameSetStatus] = useState<GameSetStatus | null>(null);
@@ -131,7 +140,10 @@ export default function HomePage() {
   const fetchGameSetStatus = async () => {
     try {
       setLoading(true);
-      const data = await scootdApiRequest<any>("GET", "game-set-status");
+      
+      // If a specific game set ID is provided, fetch that game set instead of the active one
+      const endpoint = targetGameSetId ? `game-set/${targetGameSetId}` : "game-set-status";
+      const data = await scootdApiRequest<any>("GET", endpoint);
       
       // Transform the data from scootd API format to our UI format
       const transformedData: GameSetStatus = {
@@ -216,7 +228,7 @@ export default function HomePage() {
       fetchGameSetStatus();
       // No polling interval - we'll only refresh data when explicit actions are taken
     }
-  }, [user]);
+  }, [user, targetGameSetId]); // Include targetGameSetId in dependencies to reload when it changes
 
   if (loading) {
     return (
@@ -769,7 +781,8 @@ export default function HomePage() {
   );
 
   // Check if user has permission to end games
-  const canEndGames = user?.isRoot || user?.isEngineer;
+  const canEndGames = (user?.isRoot || user?.isEngineer) && !isHistoricalView;
+  const showControls = !isHistoricalView; // Used to hide control buttons in historical view
 
   return (
     <div className="min-h-screen bg-background">
@@ -867,7 +880,7 @@ export default function HomePage() {
                               {isOG(player.birthYear) && (
                                 <span className="text-white font-bold">OG</span>
                               )}
-                              {(user?.isRoot || user?.isEngineer) && (
+                              {(user?.isRoot || user?.isEngineer) && showControls && (
                                 <>
                                   <Button 
                                     size="icon" 
