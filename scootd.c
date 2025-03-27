@@ -1359,16 +1359,17 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         
         // Update current_queue_position and queue_next_up correctly
         // current_queue_position should be incremented by (2 * players_per_team) for the players used in this game
-        // queue_next_up should be current_queue_position + (2 * players_per_team) to account for both teams' positions
+        // queue_next_up should be based on updated current_queue_position value after it's been incremented
         PQclear(res);
         sprintf(query, 
                 "UPDATE game_sets SET "
                 "current_queue_position = current_queue_position + %d, "
-                "queue_next_up = current_queue_position + (%d * 2) "
+                "queue_next_up = current_queue_position + %d + (%d * 2) "
                 "WHERE id = %d "
                 "RETURNING current_queue_position, queue_next_up", 
                 2 * players_per_team, // Increment current_queue_position for both teams
-                players_per_team,     // Set queue_next_up to be (2 * players_per_team) ahead of current_queue_position
+                2 * players_per_team, // Add the increment value to ensure we use updated current_queue_position 
+                players_per_team,     // Then add (2 * players_per_team) to set proper queue_next_up
                 game_set_id);
                 
         res = PQexec(conn, query);
@@ -2429,22 +2430,26 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     printf("Auto-checking in %d players with autoup=true:\n", autoup_count);
                 }
                 
-                // Use queue_next_up from game_sets for autoup players
-                // This ensures we place them after all existing players
-                // We first need to refresh the queue_next_up value to be accurate
+                // Instead of using queue_next_up, get the maximum existing position
+                // to ensure we don't have position collisions
                 sprintf(query, 
-                        "SELECT queue_next_up FROM game_sets WHERE id = %d",
+                        "SELECT COALESCE(MAX(queue_position), 0) FROM checkins "
+                        "WHERE game_set_id = %d AND is_active = true", 
                         set_id);
-                
-                PGresult *next_up_res = PQexec(conn, query);
-                if (PQresultStatus(next_up_res) != PGRES_TUPLES_OK || PQntuples(next_up_res) == 0) {
-                    fprintf(stderr, "Error getting updated queue_next_up: %s", PQerrorMessage(conn));
-                    PQclear(next_up_res);
+                        
+                PGresult *max_pos_res = PQexec(conn, query);
+                int start_position = 0;
+                if (PQresultStatus(max_pos_res) == PGRES_TUPLES_OK && PQntuples(max_pos_res) > 0) {
+                    start_position = atoi(PQgetvalue(max_pos_res, 0, 0));
+                    printf("Maximum existing position: %d\n", start_position);
                 } else {
-                    queue_next_up = atoi(PQgetvalue(next_up_res, 0, 0));
-                    printf("Current queue_next_up position: %d\n", queue_next_up);
+                    fprintf(stderr, "Error getting max position: %s", PQerrorMessage(conn));
                 }
-                PQclear(next_up_res);
+                PQclear(max_pos_res);
+                
+                // Set queue_next_up to the position after the highest existing position
+                queue_next_up = start_position + 1;
+                printf("Setting initial autoup position to: %d\n", queue_next_up);
                 
                 for (int i = 0; i < autoup_count; i++) {
                     int user_id = atoi(PQgetvalue(res, i, 0));
