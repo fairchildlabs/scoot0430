@@ -669,8 +669,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Execute the scootd bottom command
-      const output = await executeScootd(`bottom ${gameSetId} ${queuePosition} ${userId} json`);
+      // Execute the scootd bottom-player command
+      const output = await executeScootd(`bottom-player ${gameSetId} ${queuePosition} ${userId} json`);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
@@ -680,8 +680,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      
+      try {
+        const data = JSON.parse(jsonStr);
+        res.json(data);
+      } catch (jsonError) {
+        console.error('POST /api/scootd/bottom - Error parsing JSON:', jsonError);
+        res.json({ success: true, raw: output });
+      }
     } catch (error) {
       console.error('POST /api/scootd/bottom - Error:', error);
       res.status(500).json({ error: (error as Error).message });
