@@ -1386,11 +1386,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             printf("      \"start_time\": \"%s\",\n", PQgetvalue(res, i, 4));
             
             // Get players for this game
-            char player_query[512];
+            char player_query[1024];
             sprintf(player_query, 
-                    "SELECT gp.team, u.id, u.username, u.birth_year, gp.relative_position "
+                    "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position "
                     "FROM game_players gp "
                     "JOIN users u ON gp.user_id = u.id "
+                    "JOIN checkins c ON c.user_id = gp.user_id AND c.game_id = gp.game_id "
                     "WHERE gp.game_id = %d "
                     "ORDER BY gp.team, gp.relative_position",
                     game_id);
@@ -1561,12 +1562,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                    game_id, court, team1_score, team2_score);
             
             // Get players for this game
-            char player_query[512];
+            char player_query[1024];
             sprintf(player_query, 
                     "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position, c.type "
                     "FROM game_players gp "
                     "JOIN users u ON gp.user_id = u.id "
-                    "LEFT JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
+                    "JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
                     "WHERE gp.game_id = %d "
                     "ORDER BY gp.team, c.queue_position, gp.relative_position",
                     game_id);
@@ -1743,12 +1744,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                        game_id, court, team1_score, team2_score, duration);
                 
                 // Get players for this game
-                char player_query[512];
+                char player_query[1024];
                 sprintf(player_query, 
                         "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position, c.type "
                         "FROM game_players gp "
                         "JOIN users u ON gp.user_id = u.id "
-                        "LEFT JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
+                        "JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
                         "WHERE gp.game_id = %d "
                         "ORDER BY gp.team, c.queue_position",
                         game_id);

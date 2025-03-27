@@ -35,24 +35,30 @@ interface GameSetStatus {
   active_games: {
     id: number;
     court: string;
-    state: string;
+    state?: string;
     team1_score: number | null;
     team2_score: number | null;
     start_time: string;
-    end_time: string | null;
+    end_time?: string | null;
     players: {
+      user_id: number;
       username: string;
-      queue_position: number;
+      position?: number;
+      queue_position?: number;
       team: number;
       birth_year?: number;
+      is_og?: boolean;
     }[];
   }[];
   next_up_players: {
+    user_id: number;
     username: string;
-    queue_position: number;
-    type: string;
-    team: number | null;
+    position: number;
     birth_year?: number;
+    is_og?: boolean;
+    checkin_type?: string;
+    type?: string;
+    team?: number | null;
   }[];
   recent_completed_games: {
     id: number;
@@ -148,7 +154,7 @@ export default function HomePage() {
             endTime: g.end_time,
             players: (g.players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position,
               team: p.team,
               birthYear: p.birth_year
             }))
@@ -163,7 +169,7 @@ export default function HomePage() {
             endTime: g.end_time,
             players: (g.players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position,
               team: p.team,
               birthYear: p.birth_year
             }))
@@ -328,24 +334,52 @@ export default function HomePage() {
           console.log('Updated game set status with direct response data:', response);
         } else if ('active_games' in response || 'game_set' in response) {
           // Response is in scootd format, need to transform
+          // Define the type for the scootd response
+          type ScootdResponse = {
+            game_set?: {
+              id: number;
+              is_active: boolean;
+              current_position: number;
+              queue_next_up: number;
+              max_consecutive_games: number;
+            };
+            game_set_info?: {
+              id: number;
+              created_by: string;
+              gym: string;
+              number_of_courts: number;
+              max_consecutive_games: number;
+              current_queue_position: number;
+              queue_next_up: number;
+              created_at: string;
+              is_active: boolean;
+            };
+            active_games?: any[];
+            next_up_players?: any[];
+            recent_completed_games?: any[];
+          };
+          
+          // Type assertion to help TypeScript understand the structure
+          const scootdData = response as ScootdResponse;
+          
           const transformedData: GameSetStatus = {
-            id: response.game_set?.id || 0,
-            gym: response.game_set_info?.gym || "",
-            playersPerTeam: response.game_set_info?.max_consecutive_games || 4,
-            numberOfCourts: response.game_set_info?.number_of_courts || 1,
-            currentQueuePosition: response.game_set_info?.current_queue_position || 0,
-            createdAt: response.game_set_info?.created_at || new Date().toISOString(),
+            id: scootdData.game_set?.id || 0,
+            gym: scootdData.game_set_info?.gym || "",
+            playersPerTeam: scootdData.game_set_info?.max_consecutive_games || 4,
+            numberOfCourts: scootdData.game_set_info?.number_of_courts || 1,
+            currentQueuePosition: scootdData.game_set_info?.current_queue_position || 0,
+            createdAt: scootdData.game_set_info?.created_at || new Date().toISOString(),
             
             // Original fields from scootd
-            game_set: response.game_set,
-            game_set_info: response.game_set_info,
-            active_games: response.active_games || [],
-            next_up_players: response.next_up_players || [],
-            recent_completed_games: response.recent_completed_games || [],
+            game_set: scootdData.game_set,
+            game_set_info: scootdData.game_set_info,
+            active_games: scootdData.active_games || [],
+            next_up_players: scootdData.next_up_players || [],
+            recent_completed_games: scootdData.recent_completed_games || [],
             
             // Transform games for UI
             games: [
-              ...(response.active_games || []).map((g: any) => ({
+              ...(scootdData.active_games || []).map((g: any) => ({
                 id: g.id,
                 court: g.court,
                 state: g.state || 'started', // Default active games to 'started' state
@@ -355,12 +389,12 @@ export default function HomePage() {
                 endTime: g.end_time,
                 players: (g.players || []).map((p: any) => ({
                   username: p.username,
-                  queuePosition: p.queue_position,
+                  queuePosition: p.position || p.queue_position,
                   team: p.team,
                   birthYear: p.birth_year
                 }))
               })),
-              ...(response.recent_completed_games || []).map((g: any) => ({
+              ...(scootdData.recent_completed_games || []).map((g: any) => ({
                 id: g.id,
                 court: g.court,
                 state: g.state || 'final',
@@ -370,7 +404,7 @@ export default function HomePage() {
                 endTime: g.end_time,
                 players: (g.players || []).map((p: any) => ({
                   username: p.username,
-                  queuePosition: p.queue_position,
+                  queuePosition: p.position || p.queue_position,
                   team: p.team,
                   birthYear: p.birth_year
                 }))
@@ -378,10 +412,10 @@ export default function HomePage() {
             ],
             
             // Transform next up players for UI
-            nextUp: (response.next_up_players || []).map((p: any) => ({
+            nextUp: (scootdData.next_up_players || []).map((p: any) => ({
               username: p.username,
               queuePosition: p.position || p.queue_position,  // Use position from API or fallback to queue_position
-              type: p.type,
+              type: p.checkin_type || p.type,
               team: p.team,
               birthYear: p.birth_year
             }))
