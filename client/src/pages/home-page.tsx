@@ -177,7 +177,8 @@ export default function HomePage() {
               queuePosition: p.position || p.queue_position,
               team: p.team,
               birthYear: p.birth_year,
-              isOG: p.is_og
+              isOG: p.is_og,
+              checkin_type: p.checkin_type
             }))
           }))
         ],
@@ -398,7 +399,9 @@ export default function HomePage() {
                   username: p.username,
                   queuePosition: p.position || p.queue_position,
                   team: p.team,
-                  birthYear: p.birth_year
+                  birthYear: p.birth_year,
+                  isOG: p.is_og,
+                  checkin_type: p.checkin_type
                 }))
               })),
               ...(scootdData.recent_completed_games || []).map((g: any) => ({
@@ -414,7 +417,8 @@ export default function HomePage() {
                   queuePosition: p.position || p.queue_position,
                   team: p.team,
                   birthYear: p.birth_year,
-                  isOG: p.is_og
+                  isOG: p.is_og,
+                  checkin_type: p.checkin_type
                 }))
               }))
             ],
@@ -535,7 +539,24 @@ export default function HomePage() {
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
-                          <span>{p.username}</span>
+                          <span>
+                            {p.username}
+                            {(p.checkin_type || p.type)?.includes('win_promoted') && (
+                              <span className="ml-2 text-sm text-green-400">
+                                (WP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                            {(p.checkin_type || p.type)?.includes('loss_promoted') && (
+                              <span className="ml-2 text-sm text-yellow-400">
+                                (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                            {(p.checkin_type || p.type)?.includes('autoup') && (
+                              <span className="ml-2 text-sm text-blue-400">
+                                (Auto{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                          </span>
                         </div>
                         {isOG(p.birthYear) && (
                           <span className="text-primary font-bold ml-auto">OG</span>
@@ -579,7 +600,24 @@ export default function HomePage() {
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
-                          <span>{p.username}</span>
+                          <span>
+                            {p.username}
+                            {(p.checkin_type || p.type)?.includes('win_promoted') && (
+                              <span className="ml-2 text-sm text-green-400">
+                                (WP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                            {(p.checkin_type || p.type)?.includes('loss_promoted') && (
+                              <span className="ml-2 text-sm text-yellow-400">
+                                (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                            {(p.checkin_type || p.type)?.includes('autoup') && (
+                              <span className="ml-2 text-sm text-blue-400">
+                                (Auto{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                              </span>
+                            )}
+                          </span>
                         </div>
                         {isOG(p.birthYear) && (
                           <span className="text-white font-bold ml-auto">OG</span>
