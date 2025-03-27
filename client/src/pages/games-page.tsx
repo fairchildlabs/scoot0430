@@ -23,7 +23,47 @@ const gymOptions = ['fonde'] as const;
 // This will be true in Replit environment
 const isReplitEnv = true; // Always show in Replit UI for development
 
-// Update the GameSetLog component to show checkin type
+// All Game Sets component to list all game sets in descending order
+function AllGameSets() {
+  const { data: gameSets = [] } = useQuery<any[]>({
+    queryKey: ["/api/game-sets"],
+  });
+
+  // Sort game sets in descending order by ID
+  const sortedGameSets = [...gameSets].sort((a, b) => b.id - a.id);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-7 gap-4 font-semibold border-b pb-2">
+        <div>ID</div>
+        <div>Gym</div>
+        <div>Players/Team</div>
+        <div>Courts</div>
+        <div>Max Consec. Games</div>
+        <div>Total Check-ins</div>
+        <div>Status</div>
+      </div>
+      <div className="space-y-2">
+        {sortedGameSets.map((gameSet) => (
+          <div key={gameSet.id} className="grid grid-cols-7 gap-4 py-2 hover:bg-muted/50 rounded">
+            <div>#{gameSet.id}</div>
+            <div>{gameSet.gym}</div>
+            <div>{gameSet.playersPerTeam}</div>
+            <div>{gameSet.numberOfCourts}</div>
+            <div>{gameSet.maxConsecutiveGames}</div>
+            <div>{gameSet.queueNextUp - 1}</div>
+            <div>{gameSet.isActive ? 
+              <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 text-xs font-semibold">Active</span> : 
+              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-800 text-xs font-semibold">Completed</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Game Set Log component showing check-in details
 function GameSetLog() {
   const { data: activeGameSet = { id: 0 } } = useQuery<{ id: number }>({
     queryKey: ["/api/game-sets/active"],
@@ -77,7 +117,9 @@ export default function GamesPage() {
 
   // Get tab from URL
   const searchParams = new URLSearchParams(window.location.search);
-  const defaultTab = searchParams.get('tab') || 'new-game-set';
+  const tabParam = searchParams.get('tab');
+  // Update 'game-set-log' to 'all-game-sets' for backward compatibility
+  const defaultTab = tabParam === 'game-set-log' ? 'all-game-sets' : (tabParam || 'new-game-set');
 
   if (!user?.isEngineer && !user?.isRoot) {
     setLocation("/");
@@ -488,7 +530,7 @@ export default function GamesPage() {
               <TabsList className="mb-4">
                 <TabsTrigger value="new-game-set">New Game Set</TabsTrigger>
                 <TabsTrigger value="new-game">New Game</TabsTrigger>
-                <TabsTrigger value="game-set-log">Game Set Log</TabsTrigger>
+                <TabsTrigger value="all-game-sets">All Game Sets</TabsTrigger>
               </TabsList>
               <TabsContent value="new-game-set">
                 <NewGameSetForm />
@@ -496,8 +538,8 @@ export default function GamesPage() {
               <TabsContent value="new-game">
                 <NewGamePage />
               </TabsContent>
-              <TabsContent value="game-set-log">
-                <GameSetLog />
+              <TabsContent value="all-game-sets">
+                <AllGameSets />
               </TabsContent>
             </Tabs>
           </CardContent>
