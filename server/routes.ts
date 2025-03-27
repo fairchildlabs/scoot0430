@@ -555,6 +555,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint to get a specific game set by ID (for historical viewing)
+  app.get("/api/scootd/game-set/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const gameSetId = parseInt(req.params.id);
+      
+      // First check if the game set exists
+      const gameSet = await db.query.gameSets.findFirst({
+        where: eq(gameSets.id, gameSetId)
+      });
+      
+      if (!gameSet) {
+        return res.status(404).json({ error: "Game set not found" });
+      }
+      
+      // Use the load-historic-games command to load games for this set
+      const output = await executeScootd(`load-historic-games ${gameSetId} json`);
+      
+      // Parse the output to extract just the JSON part (ignoring connection messages)
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        throw new Error("Invalid output format from scootd");
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('GET /api/scootd/game-set/:id - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   app.post("/api/scootd/checkin", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     

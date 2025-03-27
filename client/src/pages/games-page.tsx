@@ -28,9 +28,15 @@ function AllGameSets() {
   const { data: gameSets = [] } = useQuery<any[]>({
     queryKey: ["/api/game-sets"],
   });
+  const [, setLocation] = useLocation();
 
   // Sort game sets in descending order by ID
   const sortedGameSets = [...gameSets].sort((a, b) => b.id - a.id);
+
+  // Function to navigate to view a specific game set
+  const viewGameSet = (gameSetId: number) => {
+    setLocation(`/home/${gameSetId}`);
+  };
 
   return (
     <div className="space-y-4">
@@ -45,7 +51,11 @@ function AllGameSets() {
       </div>
       <div className="space-y-2">
         {sortedGameSets.map((gameSet) => (
-          <div key={gameSet.id} className="grid grid-cols-7 gap-4 py-2 hover:bg-muted/50 rounded">
+          <div 
+            key={gameSet.id} 
+            className="grid grid-cols-7 gap-4 py-2 hover:bg-muted/50 rounded cursor-pointer"
+            onClick={() => viewGameSet(gameSet.id)}
+          >
             <div>#{gameSet.id}</div>
             <div>{gameSet.gym}</div>
             <div>{gameSet.playersPerTeam}</div>
