@@ -776,9 +776,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Construct the command, adding autoPromote if specified
       let command = `end-game ${gameId} ${homeScore} ${awayScore}`;
+      
+      // Convert boolean autoPromote to string "true" or "false"
       if (autoPromote !== undefined) {
-        command += ` ${autoPromote}`;
+        const autoPromoteStr = autoPromote === true ? "true" : "false";
+        command += ` ${autoPromoteStr}`;
       }
+      
       command += " json"; // Always get JSON response
       
       // Execute the scootd end-game command
