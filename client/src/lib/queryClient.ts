@@ -37,8 +37,13 @@ export async function scootdApiRequest<T>(
   data?: unknown | undefined,
 ): Promise<T> {
   const url = `/api/scootd/${endpoint}`;
+  console.log(`🚀 SCOOTD API CALL: ${method} ${endpoint}`, data || '(no data)');
+  
   const res = await apiRequest(method, url, data);
-  return await res.json();
+  const responseData = await res.json();
+  
+  console.log(`📥 SCOOTD API RESPONSE: ${endpoint}`, responseData);
+  return responseData;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

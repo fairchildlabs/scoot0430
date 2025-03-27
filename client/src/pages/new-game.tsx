@@ -33,7 +33,7 @@ const NewGamePage = () => {
   const activeGameSet = gameSetStatus ? {
     id: gameSetStatus.game_set?.id || 0,
     gym: gameSetStatus.game_set_info?.gym || "",
-    playersPerTeam: gameSetStatus.game_set_info?.max_consecutive_games || 4,
+    playersPerTeam: 4, // Fixed value of 4 players per team as required
     numberOfCourts: gameSetStatus.game_set_info?.number_of_courts || 1,
     currentQueuePosition: gameSetStatus.game_set_info?.current_queue_position || 0,
     createdAt: gameSetStatus.game_set_info?.created_at || new Date().toISOString(),
@@ -498,7 +498,7 @@ const NewGamePage = () => {
                   onClick={() => proposeGameMutation.mutate()}
                   disabled={proposeGameMutation.isPending}
                 >
-                  {proposeGameMutation.isPending ? "Proposing..." : "Propose Game Teams"}
+                  {proposeGameMutation.isPending ? "Creating..." : "Create Game"}
                 </Button>
               ) : (
                 <Button
