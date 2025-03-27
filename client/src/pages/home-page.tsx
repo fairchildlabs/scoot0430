@@ -27,6 +27,7 @@ interface GameSetStatus {
     gym: string;
     number_of_courts: number;
     max_consecutive_games: number;
+    players_per_team: number;
     current_queue_position: number;
     queue_next_up: number;
     created_at: string;
@@ -86,6 +87,7 @@ interface GameSetStatus {
   gym: string;
   playersPerTeam: number;
   numberOfCourts: number;
+  maxConsecutiveGames: number;
   currentQueuePosition: number;
   createdAt: string;
   games: {
@@ -136,8 +138,9 @@ export default function HomePage() {
         // Game set info
         id: data.game_set?.id || 0,
         gym: data.game_set_info?.gym || "",
-        playersPerTeam: data.game_set_info?.max_consecutive_games || 4,
+        playersPerTeam: data.game_set_info?.players_per_team || 4, // Use the correct field
         numberOfCourts: data.game_set_info?.number_of_courts || 1,
+        maxConsecutiveGames: data.game_set_info?.max_consecutive_games || 2, // Add max consecutive games
         currentQueuePosition: data.game_set_info?.current_queue_position || 0,
         createdAt: data.game_set_info?.created_at || new Date().toISOString(),
         
@@ -360,6 +363,7 @@ export default function HomePage() {
               gym: string;
               number_of_courts: number;
               max_consecutive_games: number;
+              players_per_team: number;
               current_queue_position: number;
               queue_next_up: number;
               created_at: string;
@@ -376,8 +380,9 @@ export default function HomePage() {
           const transformedData: GameSetStatus = {
             id: scootdData.game_set?.id || 0,
             gym: scootdData.game_set_info?.gym || "",
-            playersPerTeam: scootdData.game_set_info?.max_consecutive_games || 4,
+            playersPerTeam: scootdData.game_set_info?.players_per_team || 4, // Correct field
             numberOfCourts: scootdData.game_set_info?.number_of_courts || 1,
+            maxConsecutiveGames: scootdData.game_set_info?.max_consecutive_games || 2, // Add max consecutive games
             currentQueuePosition: scootdData.game_set_info?.current_queue_position || 0,
             createdAt: scootdData.game_set_info?.created_at || new Date().toISOString(),
             
@@ -785,6 +790,9 @@ export default function HomePage() {
                         </span>
                         <span className="text-sm text-muted-foreground">
                           {gameSetStatus.gym} - {gameSetStatus.playersPerTeam} players per team - {gameSetStatus.numberOfCourts} courts
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          Max consecutive games: {gameSetStatus.maxConsecutiveGames}
                         </span>
                       </div>
                     ) : (
