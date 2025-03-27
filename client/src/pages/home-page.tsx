@@ -830,7 +830,7 @@ export default function HomePage() {
                                   <Button 
                                     size="icon" 
                                     variant="outline"
-                                    className="rounded-full h-7 w-7 bg-blue-500 border-blue-600"
+                                    className="rounded-full h-7 w-7 bg-black border-gray-800"
                                     onClick={() => handleBumpPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)} 
                                     title="Bump Player"
                                   >
@@ -839,7 +839,7 @@ export default function HomePage() {
                                   <Button 
                                     size="icon" 
                                     variant="outline"
-                                    className="rounded-full h-7 w-7 bg-red-500 border-red-600 ml-1"
+                                    className="rounded-full h-7 w-7 bg-black border-gray-800 ml-1"
                                     onClick={() => handleCheckoutPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
                                     title="Checkout Player"
                                   >
