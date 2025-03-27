@@ -1359,17 +1359,17 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         
         // Update current_queue_position and queue_next_up correctly
         // current_queue_position should be incremented by (2 * players_per_team) for the players used in this game
-        // queue_next_up should be based on updated current_queue_position value after it's been incremented
+        // queue_next_up should be set to current_queue_position + players_per_team after the increment
         PQclear(res);
         sprintf(query, 
                 "UPDATE game_sets SET "
                 "current_queue_position = current_queue_position + %d, "
-                "queue_next_up = current_queue_position + %d + (%d * 2) "
+                "queue_next_up = (current_queue_position + %d) + %d "
                 "WHERE id = %d "
                 "RETURNING current_queue_position, queue_next_up", 
                 2 * players_per_team, // Increment current_queue_position for both teams
-                2 * players_per_team, // Add the increment value to ensure we use updated current_queue_position 
-                players_per_team,     // Then add (2 * players_per_team) to set proper queue_next_up
+                2 * players_per_team, // Use updated current_queue_position
+                players_per_team,     // Add just players_per_team to set queue_next_up
                 game_set_id);
                 
         res = PQexec(conn, query);
