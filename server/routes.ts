@@ -627,6 +627,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: (error as Error).message });
     }
   });
+  
+  app.post("/api/scootd/checkin-by-username", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, username } = req.body;
+      
+      if (!gameSetId || !username) {
+        return res.status(400).json({ error: "Missing gameSetId or username" });
+      }
+      
+      // Execute the scootd checkin-by-username command
+      const output = await executeScootd(`checkin-by-username ${gameSetId} ${username} json`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // If there's no JSON in the response, format a success message
+        return res.json({ 
+          success: true, 
+          message: `Player ${username} successfully checked in to game set ${gameSetId}`,
+          raw: output
+        });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/checkin-by-username - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
 
   app.post("/api/scootd/checkout", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);

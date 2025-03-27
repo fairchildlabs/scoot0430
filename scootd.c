@@ -45,6 +45,114 @@ void bottom_player(PGconn *conn, int game_set_id, int queue_position, int user_i
 bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, int team2);
 bool compare_player_arrays(PGconn *conn, int team1_players[], int team1_size, int team2_players[], int team2_size);
 void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *status_format);
+void checkin_player_by_username(PGconn *conn, int game_set_id, const char *username, const char *status_format);
+
+/**
+ * Check in a player to a game set by username
+ * 
+ * @param conn Database connection
+ * @param game_set_id The ID of the game set to check into
+ * @param username The username of the user to check in
+ * @param status_format Format to display game set status after checkin (none|text|json)
+ */
+void checkin_player_by_username(PGconn *conn, int game_set_id, const char *username, const char *status_format) {
+    char query[4096];
+    PGresult *res;
+    
+    // Start a transaction
+    res = PQexec(conn, "BEGIN");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        return;
+    }
+    PQclear(res);
+    
+    // Verify game set exists and is active
+    snprintf(query, sizeof(query), 
+        "SELECT id, is_active FROM game_sets WHERE id = %d", 
+        game_set_id);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query game set: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "Game set %d does not exist\n", game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    bool is_active = strcmp(PQgetvalue(res, 0, 1), "t") == 0;
+    if (!is_active) {
+        fprintf(stderr, "Game set %d is not active\n", game_set_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Lookup user ID by username
+    snprintf(query, sizeof(query), 
+        "SELECT id, username, is_player FROM users WHERE username = '%s'", 
+        username);
+    res = PQexec(conn, query);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to query user: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    if (PQntuples(res) == 0) {
+        fprintf(stderr, "User with username '%s' does not exist\n", username);
+        
+        if (strcmp(status_format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"User not found\"\n");
+            printf("}\n");
+        } else if (strcmp(status_format, "text") == 0) {
+            printf("Error: User not found\n");
+        }
+        
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    int user_id = atoi(PQgetvalue(res, 0, 0));
+    
+    // Check if user has is_player permission
+    bool is_player = strcmp(PQgetvalue(res, 0, 2), "t") == 0;
+    if (!is_player) {
+        fprintf(stderr, "User '%s' does not have player permission\n", username);
+        
+        if (strcmp(status_format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"User is not a player (missing is_player permission)\"\n");
+            printf("}\n");
+        } else if (strcmp(status_format, "text") == 0) {
+            printf("Error: User is not a player (missing is_player permission)\n");
+        }
+        
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    PQclear(res);
+    
+    // Now call the original function with the user ID
+    PQexec(conn, "ROLLBACK"); // Rollback the current transaction
+    checkin_player(conn, game_set_id, user_id, status_format);
+}
 
 /**
  * Check in a player to a game set
@@ -2783,6 +2891,8 @@ int main(int argc, char *argv[]) {
         printf("  end-game <game_id> <home_score> <away_score> [autopromote] [format] - End a game with the given scores and return the game set status (autopromote: true/false, default is true; format: none|text|json, default is none)\n");
         printf("  bump-player <game_set_id> <queue_position> <user_id> [format] - Swap a player with the next player below in the queue (format: none|text|json, default is none)\n");
         printf("  bottom-player <game_set_id> <queue_position> <user_id> [format] - Move a player to the bottom of the queue (format: none|text|json, default is none)\n");
+        printf("  checkin <game_set_id> <user_id> [format] - Check in a player to a game set by user ID (format: none|text|json, default: none)\n");
+        printf("  checkin-by-username <game_set_id> <username> [format] - Check in a player to a game set by username (format: none|text|json, default: none)\n");
         return 1;
     }
     
@@ -3109,6 +3219,36 @@ int main(int argc, char *argv[]) {
         }
         
         checkin_player(conn, game_set_id, user_id, status_format);
+    } else if (strcmp(command, "checkin-by-username") == 0) {
+        if (argc < 4) {
+            fprintf(stderr, "Usage: %s checkin-by-username <game_set_id> <username> [format]\n", argv[0]);
+            fprintf(stderr, "  format: none|text|json (default: none)\n");
+            fprintf(stderr, "  Check in a player to a game set by username\n");
+            PQfinish(conn);
+            return 1;
+        }
+        
+        int game_set_id = atoi(argv[2]);
+        if (game_set_id <= 0) {
+            fprintf(stderr, "Invalid game_set_id: %s\n", argv[2]);
+            PQfinish(conn);
+            return 1;
+        }
+        
+        const char *username = argv[3];
+        
+        // Get output format (default is none)
+        const char *status_format = "none";
+        if (argc >= 5) {
+            status_format = argv[4];
+            if (strcmp(status_format, "none") != 0 && strcmp(status_format, "text") != 0 && strcmp(status_format, "json") != 0) {
+                fprintf(stderr, "Invalid format: %s (should be 'none', 'text', or 'json')\n", status_format);
+                PQfinish(conn);
+                return 1;
+            }
+        }
+        
+        checkin_player_by_username(conn, game_set_id, username, status_format);
     } else {
         fprintf(stderr, "Unknown command: %s\n", command);
     }
