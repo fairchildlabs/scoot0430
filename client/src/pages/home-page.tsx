@@ -141,7 +141,7 @@ export default function HomePage() {
           ...(data.active_games || []).map((g: any) => ({
             id: g.id,
             court: g.court,
-            state: g.state,
+            state: g.state || 'started', // Default active games to 'started' state
             team1Score: g.team1_score,
             team2Score: g.team2_score,
             startTime: g.start_time,
@@ -348,7 +348,7 @@ export default function HomePage() {
               ...(response.active_games || []).map((g: any) => ({
                 id: g.id,
                 court: g.court,
-                state: g.state,
+                state: g.state || 'started', // Default active games to 'started' state
                 team1Score: g.team1_score,
                 team2Score: g.team2_score,
                 startTime: g.start_time,
