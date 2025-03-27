@@ -63,16 +63,21 @@ interface GameSetStatus {
   recent_completed_games: {
     id: number;
     court: string;
-    state: string;
+    state?: string;
     team1_score: number | null;
     team2_score: number | null;
     start_time: string;
-    end_time: string | null;
+    end_time?: string | null;
+    completed_at?: string;
     players: {
+      user_id: number;
       username: string;
-      queue_position: number;
+      position?: number;
+      queue_position?: number;
       team: number;
       birth_year?: number;
+      is_og?: boolean;
+      checkin_type?: string;
     }[];
   }[];
   
@@ -166,12 +171,13 @@ export default function HomePage() {
             team1Score: g.team1_score,
             team2Score: g.team2_score,
             startTime: g.start_time,
-            endTime: g.end_time,
+            endTime: g.end_time || g.completed_at, // Use end_time or completed_at
             players: (g.players || []).map((p: any) => ({
               username: p.username,
               queuePosition: p.position || p.queue_position,
               team: p.team,
-              birthYear: p.birth_year
+              birthYear: p.birth_year,
+              isOG: p.is_og
             }))
           }))
         ],
@@ -180,9 +186,10 @@ export default function HomePage() {
         nextUp: (data.next_up_players || []).map((p: any) => ({
           username: p.username,
           queuePosition: p.position || p.queue_position,  // Use position from API or fallback to queue_position
-          type: p.type,
+          type: p.checkin_type || p.type,
           team: p.team,
-          birthYear: p.birth_year
+          birthYear: p.birth_year,
+          isOG: p.is_og
         }))
       };
       
@@ -401,12 +408,13 @@ export default function HomePage() {
                 team1Score: g.team1_score,
                 team2Score: g.team2_score,
                 startTime: g.start_time,
-                endTime: g.end_time,
+                endTime: g.end_time || g.completed_at, // Use end_time or completed_at
                 players: (g.players || []).map((p: any) => ({
                   username: p.username,
                   queuePosition: p.position || p.queue_position,
                   team: p.team,
-                  birthYear: p.birth_year
+                  birthYear: p.birth_year,
+                  isOG: p.is_og
                 }))
               }))
             ],
@@ -417,7 +425,8 @@ export default function HomePage() {
               queuePosition: p.position || p.queue_position,  // Use position from API or fallback to queue_position
               type: p.checkin_type || p.type,
               team: p.team,
-              birthYear: p.birth_year
+              birthYear: p.birth_year,
+              isOG: p.is_og
             }))
           };
           
@@ -522,7 +531,7 @@ export default function HomePage() {
                 {game.players
                   ?.filter((p: any) => p.team === 1)
                   .map((p: any) => (
-                    <div key={p.id} className="p-2 rounded-md text-sm bg-secondary/10">
+                    <div key={`home-player-${p.user_id || p.username}-${p.queuePosition}`} className="p-2 rounded-md text-sm bg-secondary/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
@@ -566,7 +575,7 @@ export default function HomePage() {
                 {game.players
                   ?.filter((p: any) => p.team === 2)
                   .map((p: any) => (
-                    <div key={p.id} className="p-2 rounded-md text-sm bg-white/10">
+                    <div key={`away-player-${p.user_id || p.username}-${p.queuePosition}`} className="p-2 rounded-md text-sm bg-white/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
@@ -680,19 +689,24 @@ export default function HomePage() {
                       <h3 className="text-lg font-medium mb-4">Next Up</h3>
                       <div className="space-y-2">
                         {nextUpPlayers.map((player: any, index) => (
-                          <div key={player.user_id || player.id || index} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
+                          <div key={`player-${player.user_id || player.queuePosition || index}`} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
                             <div className="flex items-center gap-4">
                               <span className="font-mono text-lg">#{player.queuePosition}</span>
                               <span>
                                 {player.username}
-                                {player.type === 'win_promoted' && (
+                                {player.type?.includes('win_promoted') && (
                                   <span className="ml-2 text-sm text-green-400">
-                                    (WP-{player.team === 1 ? 'H' : 'A'})
+                                    (WP{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
                                   </span>
                                 )}
-                                {player.type === 'loss_promoted' && (
+                                {player.type?.includes('loss_promoted') && (
                                   <span className="ml-2 text-sm text-yellow-400">
-                                    (LP-{player.team === 1 ? 'H' : 'A'})
+                                    (LP{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                                  </span>
+                                )}
+                                {player.type?.includes('autoup') && (
+                                  <span className="ml-2 text-sm text-blue-400">
+                                    (Auto{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
                                   </span>
                                 )}
                               </span>
