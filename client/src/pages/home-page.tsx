@@ -109,6 +109,7 @@ interface GameSetStatus {
     type: string;
     team: number | null;
     birthYear?: number;
+    user_id?: number;  // Add user_id field
   }[];
 }
 
@@ -190,7 +191,8 @@ export default function HomePage() {
           type: p.checkin_type || p.type,
           team: p.team,
           birthYear: p.birth_year,
-          isOG: p.is_og
+          isOG: p.is_og,
+          user_id: p.user_id  // Include user_id for player actions
         }))
       };
       
@@ -242,7 +244,8 @@ export default function HomePage() {
     username: p.username,
     type: p.type,
     team: p.team,
-    pos: p.queuePosition
+    pos: p.queuePosition,
+    user_id: p.user_id  // Add user_id to debug output
   })));
 
   // Separate active and finished games from the gameSetStatus
@@ -430,7 +433,8 @@ export default function HomePage() {
               type: p.checkin_type || p.type,
               team: p.team,
               birthYear: p.birth_year,
-              isOG: p.is_og
+              isOG: p.is_og,
+              user_id: p.user_id  // Include user_id for player actions
             }))
           };
           
