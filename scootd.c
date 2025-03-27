@@ -1508,7 +1508,63 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             printf("      \"team1_score\": %d,\n", atoi(PQgetvalue(res, i, 2)));
             printf("      \"team2_score\": %d,\n", atoi(PQgetvalue(res, i, 3)));
             printf("      \"start_time\": \"%s\",\n", PQgetvalue(res, i, 4));
-            printf("      \"completed_at\": \"%s\"\n", PQgetvalue(res, i, 5));
+            printf("      \"completed_at\": \"%s\",\n", PQgetvalue(res, i, 5));
+            
+            // Get players for this completed game
+            char player_query[1024];
+            sprintf(player_query, 
+                    "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position, c.type "
+                    "FROM game_players gp "
+                    "JOIN users u ON gp.user_id = u.id "
+                    "LEFT JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
+                    "WHERE gp.game_id = %d "
+                    "ORDER BY gp.team, c.queue_position",
+                    game_id);
+            
+            PGresult *player_res = PQexec(conn, player_query);
+            if (PQresultStatus(player_res) == PGRES_TUPLES_OK) {
+                printf("      \"players\": [\n");
+                
+                int player_count = PQntuples(player_res);
+                for (int j = 0; j < player_count; j++) {
+                    int team = atoi(PQgetvalue(player_res, j, 0));
+                    int user_id = atoi(PQgetvalue(player_res, j, 1));
+                    const char *username = PQgetvalue(player_res, j, 2);
+                    const char *birth_year_str = PQgetvalue(player_res, j, 3);
+                    const char *queue_pos_str = PQgetvalue(player_res, j, 4);
+                    const char *checkin_type = PQgetvalue(player_res, j, 5);
+                    
+                    int position = queue_pos_str[0] != '\0' ? atoi(queue_pos_str) : j + 1;
+                    int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+                    bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
+                    
+                    printf("        {\n");
+                    printf("          \"user_id\": %d,\n", user_id);
+                    printf("          \"username\": \"%s\",\n", username);
+                    printf("          \"team\": %d,\n", team);
+                    printf("          \"position\": %d,\n", position);
+                    if (birth_year > 0) {
+                        printf("          \"birth_year\": %d,\n", birth_year);
+                    } else {
+                        printf("          \"birth_year\": null,\n");
+                    }
+                    printf("          \"is_og\": %s", is_og ? "true" : "false");
+                    if (checkin_type[0] != '\0') {
+                        printf(",\n          \"checkin_type\": \"%s\"\n", checkin_type);
+                    } else {
+                        printf("\n");
+                    }
+                    printf("        }%s\n", j < player_count - 1 ? "," : "");
+                }
+                
+                printf("      ]\n");
+            } else {
+                fprintf(stderr, "Error getting players for completed game %d: %s", 
+                        game_id, PQerrorMessage(conn));
+                printf("      \"players\": []\n");
+            }
+            PQclear(player_res);
+            
             printf("    }%s\n", i < completed_count - 1 ? "," : "");
         }
         
