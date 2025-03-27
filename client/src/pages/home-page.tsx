@@ -1,9 +1,10 @@
 import { useAuth } from "@/hooks/use-auth";
+import { IconOptions } from "@/components/IconOptions";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, HandMetal, X } from "lucide-react";
+import { Loader2, HandMetal, X, ArrowDownToLine } from "lucide-react";
 import { ScootLogo } from "@/components/logos/scoot-logo";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -741,6 +742,14 @@ export default function HomePage() {
           <div className="w-full max-w-2xl space-y-4">
             <Card>
               <CardHeader>
+                {/* Icon Options for admin/engineers only */}
+                {(user?.isRoot || user?.isEngineer) && (
+                  <div className="mb-4">
+                    <h3 className="text-lg font-medium mb-2">Icon Options</h3>
+                    <IconOptions />
+                  </div>
+                )}
+                
                 <div className="flex justify-between items-center">
                   <CardTitle>
                     {gameSetStatus ? (
