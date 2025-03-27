@@ -854,6 +854,14 @@ export default function HomePage() {
                                   >
                                     <X className="h-4 w-4 text-white" />
                                   </Button>
+                                  <Button 
+                                    size="icon" 
+                                    variant="outline"
+                                    className="rounded-full h-7 w-7 bg-black border-gray-800 ml-1"
+                                    title="Bottom (Move to End)"
+                                  >
+                                    <ArrowDownToLine className="h-4 w-4 text-white" />
+                                  </Button>
                                 </>
                               )}
                             </div>
