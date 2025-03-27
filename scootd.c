@@ -97,9 +97,9 @@ void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *stat
     }
     PQclear(res);
     
-    // Check if user exists
+    // Check if user exists and has is_player=true
     snprintf(query, sizeof(query), 
-        "SELECT id, username FROM users WHERE id = %d", 
+        "SELECT id, username, is_player FROM users WHERE id = %d", 
         user_id);
     res = PQexec(conn, query);
     
@@ -112,6 +112,25 @@ void checkin_player(PGconn *conn, int game_set_id, int user_id, const char *stat
     
     if (PQntuples(res) == 0) {
         fprintf(stderr, "User with ID %d does not exist\n", user_id);
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return;
+    }
+    
+    // Check if user has is_player permission
+    bool is_player = strcmp(PQgetvalue(res, 0, 2), "t") == 0;
+    if (!is_player) {
+        fprintf(stderr, "User with ID %d does not have player permission\n", user_id);
+        
+        if (strcmp(status_format, "json") == 0) {
+            printf("{\n");
+            printf("  \"status\": \"ERROR\",\n");
+            printf("  \"message\": \"User is not a player (missing is_player permission)\"\n");
+            printf("}\n");
+        } else if (strcmp(status_format, "text") == 0) {
+            printf("Error: User is not a player (missing is_player permission)\n");
+        }
+        
         PQclear(res);
         PQexec(conn, "ROLLBACK");
         return;
@@ -2800,7 +2819,7 @@ int main(int argc, char *argv[]) {
             }
             
             int user_id = atoi(argv[4]);
-            if (user_id <= 0) {
+            if (user_id < 0) {
                 fprintf(stderr, "Invalid user_id: %s\n", argv[4]);
                 PQfinish(conn);
                 return 1;
@@ -2995,7 +3014,7 @@ int main(int argc, char *argv[]) {
         }
         
         int user_id = atoi(argv[4]);
-        if (user_id <= 0) {
+        if (user_id < 0) {
             fprintf(stderr, "Invalid user_id: %s\n", argv[4]);
             PQfinish(conn);
             return 1;
@@ -3037,7 +3056,7 @@ int main(int argc, char *argv[]) {
         }
         
         int user_id = atoi(argv[4]);
-        if (user_id <= 0) {
+        if (user_id < 0) {
             fprintf(stderr, "Invalid user_id: %s\n", argv[4]);
             PQfinish(conn);
             return 1;
@@ -3072,7 +3091,7 @@ int main(int argc, char *argv[]) {
         }
         
         int user_id = atoi(argv[3]);
-        if (user_id <= 0) {
+        if (user_id < 0) {
             fprintf(stderr, "Invalid user_id: %s\n", argv[3]);
             PQfinish(conn);
             return 1;
