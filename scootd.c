@@ -2427,26 +2427,9 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     printf("Auto-checking in %d players with autoup=true:\n", autoup_count);
                 }
                 
-                // Instead of using queue_next_up, get the maximum existing position
-                // to ensure we don't have position collisions
-                sprintf(query, 
-                        "SELECT COALESCE(MAX(queue_position), 0) FROM checkins "
-                        "WHERE game_set_id = %d AND is_active = true", 
-                        set_id);
-                        
-                PGresult *max_pos_res = PQexec(conn, query);
-                int start_position = 0;
-                if (PQresultStatus(max_pos_res) == PGRES_TUPLES_OK && PQntuples(max_pos_res) > 0) {
-                    start_position = atoi(PQgetvalue(max_pos_res, 0, 0));
-                    printf("Maximum existing position: %d\n", start_position);
-                } else {
-                    fprintf(stderr, "Error getting max position: %s", PQerrorMessage(conn));
-                }
-                PQclear(max_pos_res);
-                
-                // Set queue_next_up to the position after the highest existing position
-                queue_next_up = start_position + 1;
-                printf("Setting initial autoup position to: %d\n", queue_next_up);
+                // Use the existing queue_next_up value that was already updated earlier
+                // This ensures auto-checked in players come after both existing and promoted players
+                printf("Using queue_next_up: %d for auto-checking in players\n", queue_next_up);
                 
                 for (int i = 0; i < autoup_count; i++) {
                     int user_id = atoi(PQgetvalue(res, i, 0));
