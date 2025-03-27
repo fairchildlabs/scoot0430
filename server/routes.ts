@@ -876,6 +876,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: (error as Error).message });
     }
   });
+  
+  // Add endpoint to deactivate a game set
+  app.post("/api/scootd/deactivate-game-set", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId } = req.body;
+      
+      if (!gameSetId) {
+        return res.status(400).json({ 
+          error: "Missing required parameter: gameSetId" 
+        });
+      }
+      
+      console.log(`Deactivating game set ${gameSetId}`);
+      
+      // Deactivate the game set
+      await db
+        .update(gameSets)
+        .set({ isActive: false })
+        .where(eq(gameSets.id, gameSetId));
+      
+      // Also deactivate all associated checkins
+      await db
+        .update(checkins)
+        .set({ isActive: false })
+        .where(eq(checkins.gameSetId, gameSetId));
+      
+      // Get updated game set data to return
+      const [updatedGameSet] = await db
+        .select()
+        .from(gameSets)
+        .where(eq(gameSets.id, gameSetId));
+      
+      if (!updatedGameSet) {
+        return res.status(404).json({ error: "Game set not found after deactivation" });
+      }
+      
+      // Return formatted response similar to other scootd endpoints
+      res.json({
+        success: true,
+        message: `Game set ${gameSetId} has been deactivated`,
+        game_set: updatedGameSet
+      });
+      
+    } catch (error) {
+      console.error('POST /api/scootd/deactivate-game-set - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
