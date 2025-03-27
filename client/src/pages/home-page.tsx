@@ -3,7 +3,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, ArrowUp, LogOut } from "lucide-react";
+import { Loader2, HandMetal, X } from "lucide-react";
 import { ScootLogo } from "@/components/logos/scoot-logo";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -833,7 +833,7 @@ export default function HomePage() {
                                     onClick={() => handleBumpPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)} 
                                     title="Bump Player"
                                   >
-                                    <ArrowUp className="h-4 w-4 text-blue-500" />
+                                    <HandMetal className="h-4 w-4 text-blue-500" />
                                   </Button>
                                   <Button 
                                     size="sm" 
@@ -841,7 +841,7 @@ export default function HomePage() {
                                     onClick={() => handleCheckoutPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
                                     title="Checkout Player"
                                   >
-                                    <LogOut className="h-4 w-4 text-red-500" />
+                                    <X className="h-4 w-4 text-red-500" />
                                   </Button>
                                 </>
                               )}
