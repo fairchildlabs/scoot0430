@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Redirect } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
@@ -35,148 +35,83 @@ const NewGamePage = () => {
     enabled: !!user,
   });
 
+  // State to hold proposed game data
+  const [proposedGameData, setProposedGameData] = useState<any>(null);
+  const [, navigate] = useLocation();
+  
+  // Mutation to propose a game (doesn't create it yet)
+  const proposeGameMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeGameSet) {
+        throw new Error("No active game set available");
+      }
+      
+      console.log('Proposing game for game set:', activeGameSet.id, 'on court:', selectedCourt);
+      
+      // Call the scootd propose-game endpoint
+      const data = await scootdApiRequest("POST", "propose-game", {
+        gameSetId: activeGameSet.id,
+        court: selectedCourt
+      });
+      
+      console.log('Proposed game data:', data);
+      return data;
+    },
+    onSuccess: (data) => {
+      console.log('Game proposal successful:', data);
+      setProposedGameData(data);
+      toast({
+        title: "Game proposal ready",
+        description: "Game teams have been proposed. Review and click 'Create Game' to finalize."
+      });
+    },
+    onError: (error: Error) => {
+      console.error('Game proposal failed:', error);
+      setStatusMessage(error.message);
+      toast({
+        title: "Failed to propose game",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  // Mutation to create a game after proposal
   const createGameMutation = useMutation({
     mutationFn: async () => {
       if (!activeGameSet) {
         throw new Error("No active game set available");
       }
-
-      const playersNeeded = activeGameSet.playersPerTeam * 2;
-
-      // Get current home and away team players
-      console.log('Debug - Data from queries:', {
-        activeGameSet: {
-          id: activeGameSet?.id,
-          currentQueuePosition: activeGameSet?.currentQueuePosition,
-          playersPerTeam: activeGameSet?.playersPerTeam
-        },
-        checkins: checkins?.map(p => ({
-          username: p.username,
-          pos: p.queuePosition,
-          isActive: p.isActive,
-          gameId: p.gameId,
-          type: p.type
-        }))
+      
+      console.log('Creating game for game set:', activeGameSet.id, 'on court:', selectedCourt);
+      
+      // Call the scootd new-game endpoint
+      const data = await scootdApiRequest("POST", "new-game", {
+        gameSetId: activeGameSet.id,
+        court: selectedCourt
       });
-
-      // Sort players based on their previous team assignment and queue position
-      const sortedPlayers = [...(checkins || [])].sort((a, b) => {
-        // First, ensure promoted players go to their previous teams
-        if (a.type && !b.type) return -1;
-        if (!a.type && b.type) return 1;
-        // Then sort by queue position
-        return a.queuePosition - b.queuePosition;
-      });
-
-      console.log('Initial sorted players:', sortedPlayers.map(p => ({
-        username: p.username,
-        queuePosition: p.queuePosition,
-        team: p.team,
-        type: p.type
-      })));
-
-      // Initialize team arrays
-      let homePlayers: typeof sortedPlayers = [];
-      let awayPlayers: typeof sortedPlayers = [];
-
-      // First, assign promoted players to their previous teams
-      sortedPlayers.forEach(player => {
-        const isAwayTeam = player.type?.includes('WP') || player.type?.includes('LP') ?
-          player.type.endsWith('-A') : player.team === 2;
-
-        console.log('Processing player for team assignment:', {
-          username: player.username,
-          type: player.type,
-          currentTeam: player.team,
-          isAwayTeam,
-          promotionType: player.type?.endsWith('-A') ? 'Away' : player.type?.endsWith('-H') ? 'Home' : 'None'
-        });
-
-        if (isAwayTeam && awayPlayers.length < activeGameSet.playersPerTeam) {
-          awayPlayers.push(player);
-        } else if (!isAwayTeam && homePlayers.length < activeGameSet.playersPerTeam) {
-          homePlayers.push(player);
-        }
-      });
-
-      console.log('After assigning promoted players:', {
-        home: homePlayers.map(p => ({
-          username: p.username,
-          team: p.team,
-          type: p.type,
-          position: p.queuePosition
-        })),
-        away: awayPlayers.map(p => ({
-          username: p.username,
-          team: p.team,
-          type: p.type,
-          position: p.queuePosition
-        }))
-      });
-
-      // Fill remaining spots with non-promoted players
-      sortedPlayers.forEach(player => {
-        const isAlreadyAssigned = [...homePlayers, ...awayPlayers].some(p => p.userId === player.userId);
-        if (!isAlreadyAssigned) {
-          if (homePlayers.length < activeGameSet.playersPerTeam) {
-            homePlayers.push(player);
-          } else if (awayPlayers.length < activeGameSet.playersPerTeam) {
-            awayPlayers.push(player);
-          }
-        }
-      });
-
-      // Create game data
-      const gameData: InsertGame = {
-        setId: Number(activeGameSet.id),
-        startTime: new Date().toISOString(),
-        court: selectedCourt,
-        state: 'started'
-      };
-
-      const playerAssignments = [
-        ...homePlayers.map(p => ({ userId: p.userId, team: 1 })),
-        ...awayPlayers.map(p => ({ userId: p.userId, team: 2 }))
-      ];
-
-      console.log('Final player assignments for API request:', {
-        gameData,
-        players: playerAssignments,
-        playerDetails: {
-          home: homePlayers.map(p => ({
-            username: p.username,
-            team: p.team,
-            type: p.type
-          })),
-          away: awayPlayers.map(p => ({
-            username: p.username,
-            team: p.team,
-            type: p.type
-          }))
-        }
-      });
-
-      // Create the game with assigned teams
-      const res = await apiRequest("POST", "/api/games", {
-        ...gameData,
-        players: playerAssignments
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText);
-      }
-      return await res.json();
+      
+      console.log('Created game data:', data);
+      return data;
     },
-    onSuccess: (game) => {
+    onSuccess: (data) => {
+      console.log('Game creation successful:', data);
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["/api/scootd/game-set-status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/games/active"] });
+      
       toast({
         title: "Success",
-        description: `Game #${game.id} created successfully`
+        description: "Game created successfully"
       });
-      window.location.href = "/";
+      
+      // Navigate back to home page
+      navigate("/");
     },
     onError: (error: Error) => {
+      console.error('Game creation failed:', error);
+      setStatusMessage(error.message);
       toast({
         title: "Failed to create game",
         description: error.message,
@@ -424,7 +359,7 @@ const NewGamePage = () => {
     );
   };
 
-  const isLoading = createGameMutation.isPending;
+  const isLoading = createGameMutation.isPending || proposeGameMutation.isPending;
 
   const playersCheckedIn = checkins?.length || 0;
 
@@ -471,9 +406,28 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {homePlayers.map((player: any, index: number) => (
-                        <PlayerCard key={player.id} player={player} index={index} />
-                      ))}
+                      {proposedGameData ? (
+                        // Show players from scootd proposal
+                        proposedGameData.team_1?.map((player: any, index: number) => (
+                          <PlayerCard 
+                            key={player.user_id || `home-${index}`} 
+                            player={{
+                              id: player.user_id,
+                              username: player.username,
+                              birthYear: player.birth_year,
+                              type: player.type,
+                              team: 1,
+                              queuePosition: player.position
+                            }} 
+                            index={index} 
+                          />
+                        ))
+                      ) : (
+                        // Show locally calculated teams
+                        homePlayers.map((player: any, index: number) => (
+                          <PlayerCard key={player.id || `home-${index}`} player={player} index={index} />
+                        ))
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -485,26 +439,56 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {awayPlayers.map((player: any, index: number) => (
-                        <PlayerCard
-                          key={player.id}
-                          player={player}
-                          index={index}
-                          isAway
-                        />
-                      ))}
+                      {proposedGameData ? (
+                        // Show players from scootd proposal
+                        proposedGameData.team_2?.map((player: any, index: number) => (
+                          <PlayerCard 
+                            key={player.user_id || `away-${index}`} 
+                            player={{
+                              id: player.user_id,
+                              username: player.username,
+                              birthYear: player.birth_year,
+                              type: player.type,
+                              team: 2,
+                              queuePosition: player.position
+                            }} 
+                            index={index}
+                            isAway
+                          />
+                        ))
+                      ) : (
+                        // Show locally calculated teams
+                        awayPlayers.map((player: any, index: number) => (
+                          <PlayerCard
+                            key={player.id || `away-${index}`}
+                            player={player}
+                            index={index}
+                            isAway
+                          />
+                        ))
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              <Button
-                className="w-full border border-white"
-                onClick={() => createGameMutation.mutate()}
-                disabled={createGameMutation.isPending}
-              >
-                {createGameMutation.isPending ? "Creating..." : "Create Game"}
-              </Button>
+              {!proposedGameData ? (
+                <Button
+                  className="w-full border border-white"
+                  onClick={() => proposeGameMutation.mutate()}
+                  disabled={proposeGameMutation.isPending}
+                >
+                  {proposeGameMutation.isPending ? "Proposing..." : "Propose Game Teams"}
+                </Button>
+              ) : (
+                <Button
+                  className="w-full border border-white"
+                  onClick={() => createGameMutation.mutate()}
+                  disabled={createGameMutation.isPending}
+                >
+                  {createGameMutation.isPending ? "Creating..." : "Create Game"}
+                </Button>
+              )}
 
               {/* Next Up Section */}
               {nextUpPlayers.length > 0 && (

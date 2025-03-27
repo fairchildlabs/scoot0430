@@ -691,6 +691,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/scootd/propose-game", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, court } = req.body;
+      
+      if (!gameSetId || !court) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameSetId, court" 
+        });
+      }
+      
+      console.log('POST /api/scootd/propose-game - Executing command:', `propose-game ${gameSetId} ${court} json`);
+      
+      // Execute the scootd propose-game command WITHOUT create flag
+      const output = await executeScootd(`propose-game ${gameSetId} ${court} json`);
+      console.log('POST /api/scootd/propose-game - Raw output:', output);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        console.log('POST /api/scootd/propose-game - No JSON found in output, returning raw output');
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      console.log('POST /api/scootd/propose-game - JSON string:', jsonStr);
+      
+      try {
+        const data = JSON.parse(jsonStr);
+        console.log('POST /api/scootd/propose-game - Parsed JSON response:', data);
+        res.json(data);
+      } catch (jsonError) {
+        console.error('POST /api/scootd/propose-game - Error parsing JSON:', jsonError);
+        res.json({ success: true, raw: output });
+      }
+    } catch (error) {
+      console.error('POST /api/scootd/propose-game - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   app.post("/api/scootd/new-game", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
@@ -703,19 +746,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      console.log('POST /api/scootd/new-game - Executing command:', `propose-game ${gameSetId} ${court} json true`);
+      
       // Execute the scootd propose-game command with create flag
       const output = await executeScootd(`propose-game ${gameSetId} ${court} json true`);
+      console.log('POST /api/scootd/new-game - Raw output:', output);
       
       // Parse the output to extract just the JSON part
       const jsonStartIndex = output.indexOf('{');
       if (jsonStartIndex === -1) {
         // For commands without JSON response, return the raw output
+        console.log('POST /api/scootd/new-game - No JSON found in output, returning raw output');
         return res.json({ success: true, raw: output });
       }
       
       const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      console.log('POST /api/scootd/new-game - JSON string:', jsonStr);
+      
+      try {
+        const data = JSON.parse(jsonStr);
+        console.log('POST /api/scootd/new-game - Parsed JSON response:', data);
+        res.json(data);
+      } catch (jsonError) {
+        console.error('POST /api/scootd/new-game - Error parsing JSON:', jsonError);
+        res.json({ success: true, raw: output });
+      }
     } catch (error) {
       console.error('POST /api/scootd/new-game - Error:', error);
       res.status(500).json({ error: (error as Error).message });
