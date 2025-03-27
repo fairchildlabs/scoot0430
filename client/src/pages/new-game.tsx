@@ -23,17 +23,37 @@ const NewGamePage = () => {
     return <Redirect to="/" />;
   }
 
-  // Get active game set
-  const { data: activeGameSet, isLoading: gameSetLoading } = useQuery({
-    queryKey: ["/api/game-sets/active"],
+  // Get active game set and all checked-in players using scootd API
+  const { data: gameSetStatus, isLoading: gameSetStatusLoading } = useQuery({
+    queryKey: ["/api/scootd/game-set-status"],
     enabled: !!user,
   });
-
-  // Get checked-in players
-  const { data: checkins = [], isLoading: checkinsLoading } = useQuery({
-    queryKey: ["/api/checkins"],
-    enabled: !!user,
-  });
+  
+  // Extract active game set and checkins from gameSetStatus
+  const activeGameSet = gameSetStatus ? {
+    id: gameSetStatus.game_set?.id || 0,
+    gym: gameSetStatus.game_set_info?.gym || "",
+    playersPerTeam: gameSetStatus.game_set_info?.max_consecutive_games || 4,
+    numberOfCourts: gameSetStatus.game_set_info?.number_of_courts || 1,
+    currentQueuePosition: gameSetStatus.game_set_info?.current_queue_position || 0,
+    createdAt: gameSetStatus.game_set_info?.created_at || new Date().toISOString(),
+  } : null;
+  
+  // Transform next_up_players from gameSetStatus to checkins format
+  const checkins = gameSetStatus?.next_up_players?.map((player: any) => ({
+    id: player.id,
+    userId: player.user_id,
+    username: player.username,
+    queuePosition: player.position || player.queue_position,
+    birthYear: player.birth_year,
+    gameId: null,
+    type: player.type,
+    team: player.team,
+    isActive: true,
+    isOG: player.is_og
+  })) || [];
+  
+  const isDataLoading = !gameSetStatus || gameSetStatusLoading;
 
   // State to hold proposed game data
   const [proposedGameData, setProposedGameData] = useState<any>(null);
@@ -128,7 +148,7 @@ const NewGamePage = () => {
     return null;  // Parent component will handle the display
   }
 
-  if (gameSetLoading || checkinsLoading) {
+  if (isDataLoading) {
     return (
       <div className="flex justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -359,7 +379,7 @@ const NewGamePage = () => {
     );
   };
 
-  const isLoading = createGameMutation.isPending || proposeGameMutation.isPending;
+  const isMutationLoading = createGameMutation.isPending || proposeGameMutation.isPending;
 
   const playersCheckedIn = checkins?.length || 0;
 
