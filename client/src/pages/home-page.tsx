@@ -418,12 +418,14 @@ export default function HomePage() {
     }
     
     try {
-      console.log(`Ending game set ${gameSetId}`);
+      console.log(`Ending game set ${gameSetId} using scootd`);
       
-      // Use the existing API endpoint for deactivating game sets
-      const response = await apiRequest("POST", `/api/game-sets/${gameSetId}/deactivate`);
+      // Use scootd API to deactivate the game set
+      const response = await scootdApiRequest("POST", "deactivate-game-set", {
+        gameSetId: gameSetId
+      });
 
-      console.log('Game set deactivated successfully:', response);
+      console.log('Game set deactivated successfully with scootd:', response);
       
       // Show success toast
       toast({
