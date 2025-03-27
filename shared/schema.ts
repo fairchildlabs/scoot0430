@@ -33,6 +33,7 @@ export const users = pgTable("users", {
   isBook: boolean("is_book").notNull().default(false),
   isEngineer: boolean("is_engineer").notNull().default(false),
   isRoot: boolean("is_root").notNull().default(false),
+  isGym: boolean("is_gym").notNull().default(false),
   autoup: boolean("autoup").notNull().default(true),
 });
 
@@ -105,6 +106,7 @@ export const insertUserSchema = userBaseSchema.extend({
   isBook: z.boolean().default(false),
   isEngineer: z.boolean().default(false),
   isRoot: z.boolean().default(false),
+  isGym: z.boolean().default(false),
 });
 
 export const insertGameSetSchema = createInsertSchema(gameSets, {

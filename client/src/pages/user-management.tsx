@@ -86,6 +86,7 @@ function EditUserDialog({ user, open, onClose }: { user: any; open: boolean; onC
      isBook: user.isBook,
      isEngineer: user.isEngineer,
      isRoot: user.isRoot,
+     isGym: user.isGym,
    },
  });
 
@@ -313,6 +314,21 @@ function EditUserDialog({ user, open, onClose }: { user: any; open: boolean; onC
                  </FormItem>
                )}
              />
+             <FormField
+               control={editForm.control}
+               name="isGym"
+               render={({ field }) => (
+                 <FormItem className="flex items-center space-x-2">
+                   <FormControl>
+                     <Checkbox
+                       checked={field.value}
+                       onCheckedChange={field.onChange}
+                     />
+                   </FormControl>
+                   <FormLabel className="!mt-0">Gym Manager</FormLabel>
+                 </FormItem>
+               )}
+             />
            </div>
            <Button type="submit" className="w-full" disabled={editMutation.isPending}>
              Save Changes
@@ -349,6 +365,7 @@ export default function UserManagementPage() {
      isBook: false,
      isEngineer: false,
      isRoot: false,
+     isGym: false,
    },
  });
 
@@ -1011,6 +1028,21 @@ export default function UserManagementPage() {
                              />
                            </FormControl>
                            <FormLabel className="!mt-0">Root</FormLabel>
+                         </FormItem>
+                       )}
+                     />
+                     <FormField
+                       control={registerForm.control}
+                       name="isGym"
+                       render={({ field }) => (
+                         <FormItem className="flex items-center space-x-2">
+                           <FormControl>
+                             <Checkbox
+                               checked={field.value}
+                               onCheckedChange={field.onChange}
+                             />
+                           </FormControl>
+                           <FormLabel className="!mt-0">Gym Manager</FormLabel>
                          </FormItem>
                        )}
                      />
