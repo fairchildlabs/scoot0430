@@ -173,7 +173,7 @@ export default function HomePage() {
         // Transform next up players for UI
         nextUp: (data.next_up_players || []).map((p: any) => ({
           username: p.username,
-          queuePosition: p.queue_position,
+          queuePosition: p.position || p.queue_position,  // Use position from API or fallback to queue_position
           type: p.type,
           team: p.team,
           birthYear: p.birth_year
@@ -380,7 +380,7 @@ export default function HomePage() {
             // Transform next up players for UI
             nextUp: (response.next_up_players || []).map((p: any) => ({
               username: p.username,
-              queuePosition: p.queue_position,
+              queuePosition: p.position || p.queue_position,  // Use position from API or fallback to queue_position
               type: p.type,
               team: p.team,
               birthYear: p.birth_year
@@ -643,8 +643,8 @@ export default function HomePage() {
                     <div className="mt-8">
                       <h3 className="text-lg font-medium mb-4">Next Up</h3>
                       <div className="space-y-2">
-                        {nextUpPlayers.map((player: any) => (
-                          <div key={player.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
+                        {nextUpPlayers.map((player: any, index) => (
+                          <div key={player.user_id || player.id || index} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
                             <div className="flex items-center gap-4">
                               <span className="font-mono text-lg">#{player.queuePosition}</span>
                               <span>
