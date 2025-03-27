@@ -191,18 +191,11 @@ export default function HomePage() {
     }
   };
 
-  // Fetch data initially and set up polling interval
+  // Fetch data initially, but don't poll
   useEffect(() => {
     if (user) {
       fetchGameSetStatus();
-      
-      // Set up polling interval to refresh data every 5 seconds
-      const intervalId = setInterval(() => {
-        fetchGameSetStatus();
-      }, 5000);
-      
-      // Clean up interval on unmount
-      return () => clearInterval(intervalId);
+      // No polling interval - we'll only refresh data when explicit actions are taken
     }
   }, [user]);
 
