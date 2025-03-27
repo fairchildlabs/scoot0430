@@ -655,6 +655,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: (error as Error).message });
     }
   });
+  
+  // Endpoint for moving a player to the bottom of the queue
+  app.post("/api/scootd/bottom", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { gameSetId, queuePosition, userId } = req.body;
+      
+      if (!gameSetId || !queuePosition || !userId) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: gameSetId, queuePosition, userId" 
+        });
+      }
+      
+      // Execute the scootd bottom command
+      const output = await executeScootd(`bottom ${gameSetId} ${queuePosition} ${userId} json`);
+      
+      // Parse the output to extract just the JSON part
+      const jsonStartIndex = output.indexOf('{');
+      if (jsonStartIndex === -1) {
+        // For commands without JSON response, return the raw output
+        return res.json({ success: true, raw: output });
+      }
+      
+      const jsonStr = output.substring(jsonStartIndex);
+      const data = JSON.parse(jsonStr);
+      res.json(data);
+    } catch (error) {
+      console.error('POST /api/scootd/bottom - Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
 
   app.post("/api/scootd/end-game", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);

@@ -530,6 +530,40 @@ export default function HomePage() {
       });
     }
   };
+  
+  // Handle moving a player to the bottom of the queue (for engineers and admin only)
+  const handleMoveToBottom = async (gameSetId: number | undefined, queuePosition: number, userId: number) => {
+    if (!gameSetId) return;
+    
+    try {
+      // Call the scootd bottom API
+      const response = await scootdApiRequest("POST", "bottom", {
+        gameSetId,
+        queuePosition,
+        userId
+      });
+      
+      console.log('Move to bottom response:', response);
+      
+      // Show success toast
+      toast({
+        title: "Player Moved to Bottom",
+        description: `Player at position #${queuePosition} has been moved to the bottom of the queue`,
+      });
+      
+      // Refresh game set status
+      await fetchGameSetStatus();
+    } catch (error) {
+      console.error('Error moving player to bottom:', error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to move player to bottom",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Function to handle ending the entire game set
   const handleEndSet = async (gameSetId: number) => {
@@ -849,18 +883,19 @@ export default function HomePage() {
                                     size="icon" 
                                     variant="outline"
                                     className="rounded-full h-7 w-7 bg-black border-gray-800 ml-1"
-                                    onClick={() => handleCheckoutPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
-                                    title="Checkout Player"
+                                    onClick={() => handleMoveToBottom(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
+                                    title="Bottom (Move to End)"
                                   >
-                                    <X className="h-4 w-4 text-white" />
+                                    <ArrowDownToLine className="h-4 w-4 text-white" />
                                   </Button>
                                   <Button 
                                     size="icon" 
                                     variant="outline"
                                     className="rounded-full h-7 w-7 bg-black border-gray-800 ml-1"
-                                    title="Bottom (Move to End)"
+                                    onClick={() => handleCheckoutPlayer(gameSetStatus?.game_set?.id, player.queuePosition, player.user_id)}
+                                    title="Checkout Player"
                                   >
-                                    <ArrowDownToLine className="h-4 w-4 text-white" />
+                                    <X className="h-4 w-4 text-white" />
                                   </Button>
                                 </>
                               )}
