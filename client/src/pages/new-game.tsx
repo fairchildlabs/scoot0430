@@ -497,14 +497,24 @@ const NewGamePage = () => {
                 </Card>
               </div>
 
-              {/* Always just show the Create Game button since we auto-propose */}
-              <Button
-                className="w-full border border-white"
-                onClick={() => createGameMutation.mutate()}
-                disabled={createGameMutation.isPending || !proposedGameData}
-              >
-                {createGameMutation.isPending ? "Creating..." : "Create Game"}
-              </Button>
+              {/* Create and Dismiss buttons */}
+              <div className="flex gap-4">
+                <Button
+                  className="flex-1 border border-white"
+                  onClick={() => createGameMutation.mutate()}
+                  disabled={createGameMutation.isPending || !proposedGameData}
+                >
+                  {createGameMutation.isPending ? "Creating..." : "Create Game"}
+                </Button>
+                
+                <Button
+                  className="flex-1 border border-white bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+                  onClick={() => navigate("/")}
+                  disabled={createGameMutation.isPending}
+                >
+                  Dismiss Game
+                </Button>
+              </div>
 
               {/* Next Up Section */}
               {nextUpPlayers.length > 0 && (
