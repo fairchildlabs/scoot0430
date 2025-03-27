@@ -571,8 +571,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Game set not found" });
       }
       
-      // Use the load-historic-games command to load games for this set
-      const output = await executeScootd(`load-historic-games ${gameSetId} json`);
+      // Use the game-set-status command to load games for this set
+      const output = await executeScootd(`game-set-status ${gameSetId} json`);
       
       // Parse the output to extract just the JSON part (ignoring connection messages)
       const jsonStartIndex = output.indexOf('{');
