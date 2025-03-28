@@ -1057,74 +1057,133 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     } else {
         printf("=== Proposed Game (Game Set %d, Court: %s) ===\n\n", game_set_id, court);
         
+        // First, collect all players and identify those with pre-assigned teams
+        typedef struct {
+            int user_id;
+            const char *username;
+            const char *birth_year_str;
+            int position;
+            const char *checkin_type;
+            int team; // 0 = unassigned, 1 = HOME, 2 = AWAY
+        } PlayerInfo;
+        
+        PlayerInfo players[8];
+        int home_team_count = 0;
+        int away_team_count = 0;
+        
+        // Collect player info and determine team assignments
+        for (int i = 0; i < 8; i++) {
+            players[i].user_id = atoi(PQgetvalue(res, i, 1));
+            players[i].username = PQgetvalue(res, i, 2);
+            players[i].birth_year_str = PQgetvalue(res, i, 3);
+            players[i].position = atoi(PQgetvalue(res, i, 4));
+            players[i].checkin_type = PQgetvalue(res, i, 5);
+            
+            // Check if team is already assigned from previous game
+            if (PQgetisnull(res, i, 6) == 0) {
+                players[i].team = atoi(PQgetvalue(res, i, 6));
+                
+                // Count players per team
+                if (players[i].team == 1) {
+                    home_team_count++;
+                } else if (players[i].team == 2) {
+                    away_team_count++;
+                }
+            } else {
+                players[i].team = 0; // No team assignment yet
+            }
+        }
+        
+        // Assign teams to players without a team assignment
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team == 0) {
+                // Assign to team with fewer players
+                if (home_team_count < 4) {
+                    players[i].team = 1;
+                    home_team_count++;
+                } else {
+                    players[i].team = 2;
+                    away_team_count++;
+                }
+            }
+        }
+        
+        // Display HOME team
         printf("HOME TEAM:\n");
         printf("%-3s | %-20s | %-3s | %-3s | %-20s\n", "Pos", "Username", "UID", "OG", "Type");
         printf("---------------------------------------------------------\n");
         
-        for (int i = 0; i < 4; i++) {
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
-            const char *birth_year_str = PQgetvalue(res, i, 3);
-            int position = atoi(PQgetvalue(res, i, 4));
-            const char *checkin_type = PQgetvalue(res, i, 5);
+        int home_displayed = 0;
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team != 1) continue;
             
-            int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+            int birth_year = players[i].birth_year_str[0] != '\0' ? atoi(players[i].birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
             // Check if this is an autoup player with win count
             char display_type[32];
-            strncpy(display_type, checkin_type, sizeof(display_type) - 1);
+            strncpy(display_type, players[i].checkin_type, sizeof(display_type) - 1);
             display_type[sizeof(display_type) - 1] = '\0';
             
             // If the type starts with "autoup:" format it as "autoup (win streak: X)"
-            if (strncmp(checkin_type, "autoup:", 7) == 0) {
-                int win_count = atoi(checkin_type + 7);
+            if (strncmp(players[i].checkin_type, "autoup:", 7) == 0) {
+                int win_count = atoi(players[i].checkin_type + 7);
                 sprintf(display_type, "autoup (%d win%s)", 
                         win_count, 
                         win_count == 1 ? "" : "s");
             }
             
             printf("%-3d | %-20s | %-3d | %-3s | %-20s\n", 
-                   position,
-                   username,
-                   user_id,
+                   players[i].position,
+                   players[i].username,
+                   players[i].user_id,
                    is_og ? "Yes" : "No",
                    display_type);
+            
+            home_displayed++;
         }
         
+        if (home_displayed == 0) {
+            printf("No HOME team players found\n");
+        }
+        
+        // Display AWAY team
         printf("\nAWAY TEAM:\n");
         printf("%-3s | %-20s | %-3s | %-3s | %-20s\n", "Pos", "Username", "UID", "OG", "Type");
         printf("---------------------------------------------------------\n");
         
-        for (int i = 4; i < 8; i++) {
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
-            const char *birth_year_str = PQgetvalue(res, i, 3);
-            int position = atoi(PQgetvalue(res, i, 4));
-            const char *checkin_type = PQgetvalue(res, i, 5);
+        int away_displayed = 0;
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team != 2) continue;
             
-            int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+            int birth_year = players[i].birth_year_str[0] != '\0' ? atoi(players[i].birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
             // Check if this is an autoup player with win count
             char display_type[32];
-            strncpy(display_type, checkin_type, sizeof(display_type) - 1);
+            strncpy(display_type, players[i].checkin_type, sizeof(display_type) - 1);
             display_type[sizeof(display_type) - 1] = '\0';
             
             // If the type starts with "autoup:" format it as "autoup (win streak: X)"
-            if (strncmp(checkin_type, "autoup:", 7) == 0) {
-                int win_count = atoi(checkin_type + 7);
+            if (strncmp(players[i].checkin_type, "autoup:", 7) == 0) {
+                int win_count = atoi(players[i].checkin_type + 7);
                 sprintf(display_type, "autoup (%d win%s)", 
                         win_count, 
                         win_count == 1 ? "" : "s");
             }
             
             printf("%-3d | %-20s | %-3d | %-3s | %-20s\n", 
-                   position,
-                   username,
-                   user_id,
+                   players[i].position,
+                   players[i].username,
+                   players[i].user_id,
                    is_og ? "Yes" : "No",
                    display_type);
+            
+            away_displayed++;
+        }
+        
+        if (away_displayed == 0) {
+            printf("No AWAY team players found\n");
         }
     }
     
