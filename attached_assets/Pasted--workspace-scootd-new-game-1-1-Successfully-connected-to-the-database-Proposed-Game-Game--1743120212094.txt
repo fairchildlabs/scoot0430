@@ -1,0 +1,57 @@
+~/workspace$ ./scootd new-game 1 1
+Successfully connected to the database
+=== Proposed Game (Game Set 1, Court: 1) ===
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+17  | coach                | 14  | Yes | loss_promoted:2     
+18  | kiwi                 | 15  | Yes | loss_promoted:2     
+19  | derrick              | 16  | Yes | loss_promoted:2     
+20  | mark                 | 17  | Yes | loss_promoted:2     
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+21  | tim                  | 18  | Yes | manual              
+22  | kevin                | 6   | Yes | autoup (1 win)      
+23  | kennyg               | 7   | Yes | autoup (1 win)      
+24  | nick                 | 8   | Yes | autoup (1 win)      
+Game created successfully (Game ID: 3, Court: 1)
+~/workspace$ ./scootd game-set-status 1
+Successfully connected to the database
+==== Game Set 1 Status ====
+Active: Yes
+Current Position: 25
+Queue Next Up: 30
+Max Consecutive Games: 2
+
+==== Game Set Info ====
+ID: 1
+Created by: 2
+Gym: fonde
+Number of courts: 2
+Max consecutive games: 2
+Current queue position: 25
+Queue next up: 30
+Created at: 2025-03-27 17:57:10.116
+Active: Yes
+
+==== Active Games (1) ====
+Game #3 on Court 1 (Score: 0-0)
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+21  | tim                  | 18  | Yes | manual    
+22  | kevin                | 6   | Yes | autoup:1  
+23  | kennyg               | 7   | Yes | autoup:1  
+24  | nick                 | 8   | Yes | autoup:1  
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+17  | coach                | 14  | Yes | loss_promoted:2
+18  | kiwi                 | 15  | Yes | loss_promoted:2
+19  | derrick              | 16  | Yes | loss_promoted:2
+20  | mark                 | 17  | Yes | loss_promoted:2
