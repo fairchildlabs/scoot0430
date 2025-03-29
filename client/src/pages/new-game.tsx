@@ -351,17 +351,12 @@ const NewGamePage = () => {
       
       const { baseType, teamDesignation } = parseCheckinType(checkinType);
       
-      // Logic for fixing display issues:
-      // 1. In the NEXT_UP queue, we should show badges based on the actual assignment from scootd
-      // 2. In the HOME/AWAY displays, we also need to respect the actual API data
-      
-      // Check for the promotion types and display the correct badge
+      // Display badge based on the original promotion type
+      // Let the server decide which team the player belongs to
       if (baseType === 'win_promoted') {
-        // If we're in a PlayerCard in the HOME square, but the player should be AWAY, show WP-A
-        // If we're in a PlayerCard in the AWAY square, but the player should be HOME, show WP-H
-        return teamDesignation === 'H' ? 'WP-H' : 'WP-A';
+        return 'WP';
       } else if (baseType === 'loss_promoted') {
-        return teamDesignation === 'H' ? 'LP-H' : 'LP-A';
+        return 'LP';
       } else if (baseType === 'autoup') {
         return 'Autoup';
       }
