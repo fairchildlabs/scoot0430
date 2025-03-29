@@ -125,6 +125,58 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  
+  // Helper function to get promotion badge text
+  const getPromotionBadge = (checkinType: string | undefined) => {
+    if (!checkinType) return null;
+    
+    if (checkinType.includes('win_promoted')) {
+      return 'WP';
+    } else if (checkinType.includes('loss_promoted')) {
+      return 'LP';
+    } else if (checkinType.includes('autoup')) {
+      return 'Autoup';
+    }
+    return null;
+  };
+  
+  // Helper component for promotion badges
+  const PromotionBadge = ({ checkinType }: { checkinType: string | undefined }) => {
+    if (!checkinType) return null;
+    
+    let badge = getPromotionBadge(checkinType);
+    if (!badge) return null;
+    
+    // Add team designation for win/loss promoted players
+    if ((checkinType.includes('win_promoted') || checkinType.includes('loss_promoted')) && checkinType.includes(':')) {
+      // Check if we have three parts (e.g., win_promoted:1:H)
+      const parts = checkinType.split(':');
+      if (parts.length >= 3) {
+        // Use the team letter from the third part
+        badge += `-${parts[2]}`;
+      } else if (parts.length === 2) {
+        // Fall back to the team number from the second part
+        badge += `-${parts[1] === '1' ? 'H' : 'A'}`;
+      }
+    }
+    
+    let className = "ml-2 text-sm ";
+    
+    // Set the color based on promotion type
+    if (checkinType.includes('win_promoted')) {
+      className += "text-green-400";
+    } else if (checkinType.includes('loss_promoted')) {
+      className += "text-yellow-400";
+    } else if (checkinType.includes('autoup')) {
+      className += "text-blue-400";
+    }
+    
+    return (
+      <span className={className}>
+        ({badge})
+      </span>
+    );
+  };
   const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number; autoPromote: boolean }>>({});
   const { toast } = useToast();
   
@@ -678,21 +730,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
                           <span>
                             {p.username}
-                            {(p.checkin_type || p.type)?.includes('win_promoted') && (
-                              <span className="ml-2 text-sm text-green-400">
-                                (WP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                              </span>
-                            )}
-                            {(p.checkin_type || p.type)?.includes('loss_promoted') && (
-                              <span className="ml-2 text-sm text-yellow-400">
-                                (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                              </span>
-                            )}
-                            {(p.checkin_type || p.type)?.includes("autoup") && (
-                              <span className="ml-2 text-sm text-blue-400">
-                                (Autoup)
-                              </span>
-                            )}
+                            <PromotionBadge checkinType={p.checkin_type || p.type} />
                           </span>
                         </div>
                         {isOG(p.birthYear) && (
@@ -739,20 +777,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
                           <span>
                             {p.username}
-                            {(p.checkin_type || p.type)?.includes('win_promoted') && (
-                              <span className="ml-2 text-sm text-green-400">
-                                (WP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                              </span>
-                            )}
-                            {(p.checkin_type || p.type)?.includes('loss_promoted') && (
-                              <span className="ml-2 text-sm text-yellow-400">
-                                (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                              </span>
-                            )}
-                            {(p.checkin_type || p.type)?.includes("autoup") && (
-                              <span className="ml-2 text-sm text-blue-400">
-                                (Autoup)
-                              </span>
+                            {(p.checkin_type || p.type) && (
+                              <PromotionBadge checkinType={p.checkin_type || p.type} />
                             )}
                           </span>
                         </div>
@@ -893,21 +919,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                               <span className="font-mono text-lg">#{player.queuePosition}</span>
                               <span>
                                 {player.username}
-                                {player.type?.includes('win_promoted') && (
-                                  <span className="ml-2 text-sm text-green-400">
-                                    (WP{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                                  </span>
-                                )}
-                                {player.type?.includes('loss_promoted') && (
-                                  <span className="ml-2 text-sm text-yellow-400">
-                                    (LP{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
-                                  </span>
-                                )}
-                                {player.type?.includes("autoup") && (
-                                  <span className="ml-2 text-sm text-blue-400">
-                                    (Autoup)
-                                  </span>
-                                )}
+                                <PromotionBadge checkinType={player.type} />
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
