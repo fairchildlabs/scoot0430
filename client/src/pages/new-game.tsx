@@ -315,63 +315,57 @@ const NewGamePage = () => {
     return (currentYear - birthYear) >= 75;
   };
 
+  // PromotionBadge component for consistent badge display
+  const PromotionBadge = ({ checkinType }: { checkinType?: string }) => {
+    if (!checkinType) return null;
+    
+    // Helper function to parse checkin_type
+    const parseCheckinType = (type: string = '') => {
+      if (!type.includes(':')) return { baseType: type };
+      
+      const parts = type.split(':');
+      return {
+        baseType: parts[0],
+        teamNumber: parts[1],
+        teamDesignation: parts.length >= 3 ? parts[2] : ''
+      };
+    };
+    
+    const { baseType, teamDesignation } = parseCheckinType(checkinType);
+    
+    if (baseType === 'win_promoted') {
+      return (
+        <span className="ml-2 text-sm text-green-400">
+          (WP{teamDesignation ? `-${teamDesignation}` : ''})
+        </span>
+      );
+    } else if (baseType === 'loss_promoted') {
+      return (
+        <span className="ml-2 text-sm text-yellow-400">
+          (LP{teamDesignation ? `-${teamDesignation}` : ''})
+        </span>
+      );
+    } else if (baseType === 'autoup') {
+      return (
+        <span className="ml-2 text-sm text-blue-400">
+          (Autoup)
+        </span>
+      );
+    }
+    
+    return null;
+  };
+
   // We've removed the scootdPlayerMutation as it's not needed anymore
   // This implements the user's request to remove checkout/bump/swap buttons
 
   const PlayerCard = ({ player, index, isNextUp = false, isAway = false }: { player: any; index: number; isNextUp?: boolean; isAway?: boolean }) => {
-    // Helper function to parse checkin_type (format: "win_promoted:1:H" or "loss_promoted:1:A")
-    const parseCheckinType = (checkinType: string = '') => {
-      const parts = checkinType.split(':');
-      
-      // Basic type (win_promoted, loss_promoted, manual, etc.)
-      const baseType = parts[0] || '';
-      
-      // Team number (1 or 2)
-      let teamNumber = '';
-      if (parts.length >= 2) {
-        teamNumber = parts[1] || '';
-      }
-      
-      // Team designation from the checkin_type (H or A)
-      let teamDesignation = '';
-      if (parts.length >= 3) {
-        teamDesignation = parts[2] || '';
-      }
-      
-      console.log('Parsed checkin_type:', { checkinType, baseType, teamNumber, teamDesignation });
-      
-      return { baseType, teamNumber, teamDesignation };
-    };
-    
-    // Helper function to get promotion badge text
-    const getPromotionBadge = (checkinType: string) => {
-      console.log('Promotion badge calculation:', { checkinType });
-      
-      if (!checkinType) return null;
-      
-      const { baseType, teamDesignation } = parseCheckinType(checkinType);
-      
-      // Display badge based on the original promotion type
-      // Let the server decide which team the player belongs to
-      if (baseType === 'win_promoted') {
-        return 'WP';
-      } else if (baseType === 'loss_promoted') {
-        return 'LP';
-      } else if (baseType === 'autoup') {
-        return 'Autoup';
-      }
-      return null;
-    };
-
     console.log('Player data in PlayerCard:', {
       username: player.username,
       type: player.type,
       team: player.team,
       pos: player.queuePosition
     });
-
-    const promotionBadge = getPromotionBadge(player.type);
-    const { baseType } = player.type ? parseCheckinType(player.type) : { baseType: '' };
 
     return (
       <div className={`flex items-center justify-between p-2 rounded-md ${
@@ -383,15 +377,7 @@ const NewGamePage = () => {
           <span className="font-mono text-lg">#{player.displayPosition || player.queuePosition}</span>
           <span>
             {player.username}
-            {promotionBadge && (
-              <span className={`ml-2 text-sm ${
-                baseType === 'win_promoted' ? 'text-green-400' : 
-                baseType === 'loss_promoted' ? 'text-yellow-400' : 
-                'text-blue-400'
-              }`}>
-                ({promotionBadge})
-              </span>
-            )}
+            <PromotionBadge checkinType={player.type} />
           </span>
         </div>
         <div className="flex items-center gap-2">
