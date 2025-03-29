@@ -65,6 +65,7 @@ type ProposedGameData = {
     birth_year: number;
     position: number;
     is_og: boolean;
+    checkin_type?: string;
   }>;
   team2: Array<{
     user_id: number;
@@ -72,6 +73,7 @@ type ProposedGameData = {
     birth_year: number;
     position: number;
     is_og: boolean;
+    checkin_type?: string;
   }>;
 };
 
@@ -111,7 +113,7 @@ const NewGamePage = () => {
     queuePosition: player.position,
     birthYear: player.birth_year,
     gameId: null,
-    type: undefined,
+    type: player.checkin_type, // Use the checkin_type from API directly
     team: undefined,
     isActive: true,
     isOG: player.is_og
@@ -324,13 +326,21 @@ const NewGamePage = () => {
       // Basic type (win_promoted, loss_promoted, manual, etc.)
       const baseType = parts[0] || '';
       
+      // Team number (1 or 2)
+      let teamNumber = '';
+      if (parts.length >= 2) {
+        teamNumber = parts[1] || '';
+      }
+      
       // Team designation from the checkin_type (H or A)
       let teamDesignation = '';
       if (parts.length >= 3) {
         teamDesignation = parts[2] || '';
       }
       
-      return { baseType, teamDesignation };
+      console.log('Parsed checkin_type:', { checkinType, baseType, teamNumber, teamDesignation });
+      
+      return { baseType, teamNumber, teamDesignation };
     };
     
     // Helper function to get promotion badge text
@@ -341,10 +351,19 @@ const NewGamePage = () => {
       
       const { baseType, teamDesignation } = parseCheckinType(checkinType);
       
+      // Logic for fixing display issues:
+      // 1. In the NEXT_UP queue, we should show badges based on the actual assignment from scootd
+      // 2. In the HOME/AWAY displays, we also need to respect the actual API data
+      
+      // Check for the promotion types and display the correct badge
       if (baseType === 'win_promoted') {
+        // If we're in a PlayerCard in the HOME square, but the player should be AWAY, show WP-A
+        // If we're in a PlayerCard in the AWAY square, but the player should be HOME, show WP-H
         return teamDesignation === 'H' ? 'WP-H' : 'WP-A';
       } else if (baseType === 'loss_promoted') {
         return teamDesignation === 'H' ? 'LP-H' : 'LP-A';
+      } else if (baseType === 'autoup') {
+        return teamDesignation === 'H' ? 'AU-H' : 'AU-A';
       }
       return null;
     };
