@@ -2306,6 +2306,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
         if (winning_team_was_previously_loss_promoted) {
             // If winning team was previously loss_promoted, now promote the losing team
             team_to_promote = losing_team;
+            // Add team designation (H or A) based on the team being promoted
             sprintf(promotion_type, "loss_promoted:%d", consecutive_games);
             printf("Winning team was previously loss_promoted - now promoting losers\n");
         } else if (consecutive_games < max_consecutive_games) {
@@ -2399,6 +2400,17 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
             // This ensures promoted players get positions 9, 10, 11, 12 instead of all getting position 9
             int new_position = current_queue_position + i;
             
+            // Create promotion type with team designation (H or A)
+            char player_promotion_type[64];
+            const char* team_designation = (player_team == 1) ? "H" : "A";
+            
+            // e.g., "win_promoted:1:H" or "loss_promoted:2:A"
+            if (strncmp(promotion_type, "win_promoted", 12) == 0) {
+                sprintf(player_promotion_type, "win_promoted:%d:%s", consecutive_games, team_designation);
+            } else {
+                sprintf(player_promotion_type, "loss_promoted:%d:%s", consecutive_games, team_designation);
+            }
+            
             // Store the team for promoted players so they can play on the same team next time
             // For loss-promoted players, we want to maintain their original team assignment
             char insert_query[512];
@@ -2406,7 +2418,7 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, team, check_in_time, check_in_date) "
                     "VALUES (%d, %d, 34, %d, true, '%s', %d, NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                     "RETURNING id",
-                    user_id, set_id, new_position, promotion_type, player_team);
+                    user_id, set_id, new_position, player_promotion_type, player_team);
             
             PGresult *insert_res = PQexec(conn, insert_query);
             if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
@@ -2516,15 +2528,16 @@ void end_game(PGconn *conn, int game_id, int home_score, int away_score, bool au
                     
                     char insert_query[512];
                     
-                    // Create autoup type with consecutive game count, e.g., "autoup:2" for players from a team with 2 games
+                    // Create autoup type with consecutive game count, e.g., "autoup:2:H" for players from team Home with 2 games
                     char autoup_type[32];
-                    sprintf(autoup_type, "autoup:%d", consecutive_games);
+                    const char* team_designation = (team_with_autoup == 1) ? "H" : "A";
+                    sprintf(autoup_type, "autoup:%d:%s", consecutive_games, team_designation);
                     
                     sprintf(insert_query, 
-                            "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, check_in_time, check_in_date) "
-                            "VALUES (%d, %d, 34, %d, true, '%s', NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
+                            "INSERT INTO checkins (user_id, game_set_id, club_index, queue_position, is_active, type, team, check_in_time, check_in_date) "
+                            "VALUES (%d, %d, 34, %d, true, '%s', %d, NOW(), TO_CHAR(NOW(), 'YYYY-MM-DD')) "
                             "RETURNING id",
-                            user_id, set_id, current_position, autoup_type);
+                            user_id, set_id, current_position, autoup_type, team_with_autoup);
                     
                     PGresult *insert_res = PQexec(conn, insert_query);
                     if (PQresultStatus(insert_res) != PGRES_TUPLES_OK) {
