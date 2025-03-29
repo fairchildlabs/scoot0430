@@ -239,6 +239,12 @@ const NewGamePage = () => {
   
   // If we have proposed game data, use it to populate the team rosters
   if (proposedGameData) {
+    // Find the promotion type for each player using the next_up_players array
+    const findPromotionType = (playerId: number) => {
+      const player = gameSetStatus?.next_up_players?.find(p => p.user_id === playerId);
+      return player?.checkin_type || '';
+    };
+    
     // Map team1 (home) players from proposed game data
     homePlayers = proposedGameData.team1.map((player, index) => ({
       userId: player.user_id,
@@ -246,7 +252,8 @@ const NewGamePage = () => {
       birthYear: player.birth_year,
       queuePosition: player.position,
       displayPosition: index + 1, // 1-based position
-      isOG: player.is_og
+      isOG: player.is_og,
+      type: findPromotionType(player.user_id)
     }));
     
     // Map team2 (away) players from proposed game data
@@ -256,7 +263,8 @@ const NewGamePage = () => {
       birthYear: player.birth_year,
       queuePosition: player.position,
       displayPosition: index + 1 + homePlayers.length, // continue numbering after home team
-      isOG: player.is_og
+      isOG: player.is_og,
+      type: findPromotionType(player.user_id)
     }));
   }
 
@@ -309,13 +317,34 @@ const NewGamePage = () => {
   // This implements the user's request to remove checkout/bump/swap buttons
 
   const PlayerCard = ({ player, index, isNextUp = false, isAway = false }: { player: any; index: number; isNextUp?: boolean; isAway?: boolean }) => {
+    // Helper function to parse checkin_type (format: "win_promoted:1:H" or "loss_promoted:1:A")
+    const parseCheckinType = (checkinType: string = '') => {
+      const parts = checkinType.split(':');
+      
+      // Basic type (win_promoted, loss_promoted, manual, etc.)
+      const baseType = parts[0] || '';
+      
+      // Team designation from the checkin_type (H or A)
+      let teamDesignation = '';
+      if (parts.length >= 3) {
+        teamDesignation = parts[2] || '';
+      }
+      
+      return { baseType, teamDesignation };
+    };
+    
     // Helper function to get promotion badge text
-    const getPromotionBadge = (type: string, team: number | null) => {
-      console.log('Promotion badge calculation:', { type, team });
-      if (type === 'win_promoted') {
-        return team === 1 ? 'WP-H' : 'WP-A';
-      } else if (type === 'loss_promoted') {
-        return team === 1 ? 'LP-H' : 'LP-A';
+    const getPromotionBadge = (checkinType: string) => {
+      console.log('Promotion badge calculation:', { checkinType });
+      
+      if (!checkinType) return null;
+      
+      const { baseType, teamDesignation } = parseCheckinType(checkinType);
+      
+      if (baseType === 'win_promoted') {
+        return teamDesignation === 'H' ? 'WP-H' : 'WP-A';
+      } else if (baseType === 'loss_promoted') {
+        return teamDesignation === 'H' ? 'LP-H' : 'LP-A';
       }
       return null;
     };
@@ -327,7 +356,8 @@ const NewGamePage = () => {
       pos: player.queuePosition
     });
 
-    const promotionBadge = getPromotionBadge(player.type, player.team);
+    const promotionBadge = getPromotionBadge(player.type);
+    const { baseType } = player.type ? parseCheckinType(player.type) : { baseType: '' };
 
     return (
       <div className={`flex items-center justify-between p-2 rounded-md ${
@@ -340,7 +370,7 @@ const NewGamePage = () => {
           <span>
             {player.username}
             {promotionBadge && (
-              <span className={`ml-2 text-sm ${player.type === 'win_promoted' ? 'text-green-400' : 'text-yellow-400'}`}>
+              <span className={`ml-2 text-sm ${baseType === 'win_promoted' ? 'text-green-400' : 'text-yellow-400'}`}>
                 ({promotionBadge})
               </span>
             )}
@@ -433,20 +463,24 @@ const NewGamePage = () => {
                     <div className="space-y-2">
                       {proposedGameData ? (
                         // Show players from scootd proposal
-                        proposedGameData.team1.map((player, index) => (
-                          <PlayerCard 
-                            key={player.user_id || `home-${index}`} 
-                            player={{
-                              id: player.user_id,
-                              username: player.username,
-                              birthYear: player.birth_year,
-                              type: undefined,
-                              team: 1,
-                              queuePosition: player.position
-                            }} 
-                            index={index} 
-                          />
-                        ))
+                        proposedGameData.team1.map((player, index) => {
+                          // Find the player in the next_up_players array to get the checkin_type
+                          const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
+                          return (
+                            <PlayerCard 
+                              key={player.user_id || `home-${index}`} 
+                              player={{
+                                id: player.user_id,
+                                username: player.username,
+                                birthYear: player.birth_year,
+                                type: nextUpPlayer?.checkin_type || "manual",
+                                team: 1,
+                                queuePosition: player.position
+                              }} 
+                              index={index} 
+                            />
+                          );
+                        })
                       ) : (
                         // Show locally calculated teams
                         homePlayers.map((player: any, index: number) => (
@@ -466,21 +500,25 @@ const NewGamePage = () => {
                     <div className="space-y-2">
                       {proposedGameData ? (
                         // Show players from scootd proposal
-                        proposedGameData.team2.map((player, index) => (
-                          <PlayerCard 
-                            key={player.user_id || `away-${index}`} 
-                            player={{
-                              id: player.user_id,
-                              username: player.username,
-                              birthYear: player.birth_year,
-                              type: undefined,
-                              team: 2,
-                              queuePosition: player.position
-                            }} 
-                            index={index}
-                            isAway
-                          />
-                        ))
+                        proposedGameData.team2.map((player, index) => {
+                          // Find the player in the next_up_players array to get the checkin_type
+                          const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
+                          return (
+                            <PlayerCard 
+                              key={player.user_id || `away-${index}`} 
+                              player={{
+                                id: player.user_id,
+                                username: player.username,
+                                birthYear: player.birth_year,
+                                type: nextUpPlayer?.checkin_type || "manual",
+                                team: 2,
+                                queuePosition: player.position
+                              }} 
+                              index={index}
+                              isAway
+                            />
+                          );
+                        })
                       ) : (
                         // Show locally calculated teams
                         awayPlayers.map((player: any, index: number) => (
