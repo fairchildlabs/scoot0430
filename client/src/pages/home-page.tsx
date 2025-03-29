@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
 import { apiRequest, scootdApiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -124,7 +125,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number }>>({});
+  const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number; autoPromote: boolean }>>({});
   const { toast } = useToast();
   
   // Use the route param ID if provided, otherwise use the direct prop
@@ -299,7 +300,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
       [gameId]: {
         showInputs: !prev[gameId]?.showInputs,
         team1Score: prev[gameId]?.team1Score,
-        team2Score: prev[gameId]?.team2Score
+        team2Score: prev[gameId]?.team2Score,
+        autoPromote: prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true // Default to true
       }
     }));
   };
@@ -311,10 +313,21 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
         ...prev,
         [gameId]: {
           ...prev[gameId],
-          [team]: numValue
+          [team]: numValue,
+          autoPromote: prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true
         }
       }));
     }
+  };
+  
+  const toggleAutoPromote = (gameId: number) => {
+    setGameScores(prev => ({
+      ...prev,
+      [gameId]: {
+        ...prev[gameId],
+        autoPromote: !(prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true)
+      }
+    }));
   };
 
   const handleEndGame = async (gameId: number) => {
@@ -331,7 +344,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
         gameId: gameId,
         homeScore: scores.team1Score,
         awayScore: scores.team2Score,
-        autoPromote: true  // Enable automatic promotion of players
+        autoPromote: scores.autoPromote  // Use the autoPromote flag from the state
       });
 
       console.log('Game ended successfully with scootd:', response);
@@ -348,7 +361,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
         [gameId]: {
           showInputs: false,
           team1Score: undefined,
-          team2Score: undefined
+          team2Score: undefined,
+          autoPromote: prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true
         }
       }));
 
@@ -764,16 +778,36 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
           </Card>
         </div>
         {showScoreInputs && gameScores[game.id]?.showInputs && (
-          <div className="mt-4 flex justify-end">
-            <Button
-              onClick={() => handleEndGame(game.id)}
-              disabled={
-                gameScores[game.id]?.team1Score === undefined ||
-                gameScores[game.id]?.team2Score === undefined
-              }
-            >
-              Submit Scores
-            </Button>
+          <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id={`auto-promote-${game.id}`}
+                  checked={gameScores[game.id]?.autoPromote !== undefined ? gameScores[game.id].autoPromote : true}
+                  onCheckedChange={() => toggleAutoPromote(game.id)}
+                />
+                <label
+                  htmlFor={`auto-promote-${game.id}`}
+                  className="text-sm font-medium cursor-pointer"
+                >
+                  Automatically promote players
+                </label>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {gameScores[game.id]?.autoPromote ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                onClick={() => handleEndGame(game.id)}
+                disabled={
+                  gameScores[game.id]?.team1Score === undefined ||
+                  gameScores[game.id]?.team2Score === undefined
+                }
+              >
+                Submit Scores
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
