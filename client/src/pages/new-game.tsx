@@ -363,7 +363,7 @@ const NewGamePage = () => {
       } else if (baseType === 'loss_promoted') {
         return teamDesignation === 'H' ? 'LP-H' : 'LP-A';
       } else if (baseType === 'autoup') {
-        return teamDesignation === 'H' ? 'AU-H' : 'AU-A';
+        return 'Autoup';
       }
       return null;
     };
@@ -389,7 +389,11 @@ const NewGamePage = () => {
           <span>
             {player.username}
             {promotionBadge && (
-              <span className={`ml-2 text-sm ${baseType === 'win_promoted' ? 'text-green-400' : 'text-yellow-400'}`}>
+              <span className={`ml-2 text-sm ${
+                baseType === 'win_promoted' ? 'text-green-400' : 
+                baseType === 'loss_promoted' ? 'text-yellow-400' : 
+                'text-blue-400'
+              }`}>
                 ({promotionBadge})
               </span>
             )}

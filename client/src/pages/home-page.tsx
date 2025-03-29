@@ -688,9 +688,9 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                                 (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
                               </span>
                             )}
-                            {(p.checkin_type || p.type)?.includes('autoup') && (
+                            {(p.checkin_type || p.type)?.includes("autoup") && (
                               <span className="ml-2 text-sm text-blue-400">
-                                (Auto{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                                (Autoup)
                               </span>
                             )}
                           </span>
@@ -749,9 +749,9 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                                 (LP{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
                               </span>
                             )}
-                            {(p.checkin_type || p.type)?.includes('autoup') && (
+                            {(p.checkin_type || p.type)?.includes("autoup") && (
                               <span className="ml-2 text-sm text-blue-400">
-                                (Auto{(p.checkin_type || p.type)?.includes(':') ? `-${(p.checkin_type || p.type).split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                                (Autoup)
                               </span>
                             )}
                           </span>
@@ -903,9 +903,9 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                                     (LP{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
                                   </span>
                                 )}
-                                {player.type?.includes('autoup') && (
+                                {player.type?.includes("autoup") && (
                                   <span className="ml-2 text-sm text-blue-400">
-                                    (Auto{player.type?.includes(':') ? `-${player.type.split(':')[1] === '1' ? 'H' : 'A'}` : ''})
+                                    (Autoup)
                                   </span>
                                 )}
                               </span>
