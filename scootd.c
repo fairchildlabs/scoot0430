@@ -1300,7 +1300,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                 "ORDER BY c.team NULLS LAST, c.queue_position ASC "
                 "LIMIT 8",
                 current_position);
-                
+                       printf("bCreate : player query (%s)\n", query);
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) < 8) {
             fprintf(stderr, "Error finding available players: %s", PQerrorMessage(conn));
@@ -1377,7 +1377,9 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                     "UPDATE checkins SET game_id = %d, team = %d "
                     "WHERE id = %d", 
                     game_id, team_to_assign, players[i].checkin_id);
+                    		printf("insert update checkins(%s)\n", update_query);
                     
+      
             PGresult *update_res = PQexec(conn, update_query);
             if (PQresultStatus(update_res) != PGRES_COMMAND_OK) {
                 fprintf(stderr, "Error assigning player %s to game: %s", players[i].username, PQerrorMessage(conn));
@@ -1411,7 +1413,8 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                     "INSERT INTO game_players (game_id, user_id, team, relative_position) "
                     "VALUES (%d, %d, %d, %d)",
                     game_id, players[i].user_id, team_to_assign, relative_pos);
-                    
+            printf("insert game_player(%s)\n", insert_query);
+        
             PGresult *insert_res = PQexec(conn, insert_query);
             if (PQresultStatus(insert_res) != PGRES_COMMAND_OK) {
                 fprintf(stderr, "Error creating game_player record: %s", PQerrorMessage(conn));
