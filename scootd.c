@@ -1000,56 +1000,109 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     
     // Format: json or text
     if (strcmp(format, "json") == 0) {
+        // First, collect all players and identify those with pre-assigned teams
+        typedef struct {
+            int user_id;
+            const char *username;
+            const char *birth_year_str;
+            int position;
+            const char *checkin_type;
+            int team; // 0 = unassigned, 1 = HOME, 2 = AWAY
+        } PlayerInfo;
+        
+        PlayerInfo players[8];
+        int home_team_count = 0;
+        int away_team_count = 0;
+        
+        // Collect player info and determine team assignments
+        for (int i = 0; i < 8; i++) {
+            players[i].user_id = atoi(PQgetvalue(res, i, 1));
+            players[i].username = PQgetvalue(res, i, 2);
+            players[i].birth_year_str = PQgetvalue(res, i, 3);
+            players[i].position = atoi(PQgetvalue(res, i, 4));
+            players[i].checkin_type = PQgetvalue(res, i, 5);
+            
+            // Check if team is already assigned from previous game
+            if (PQgetisnull(res, i, 6) == 0) {
+                players[i].team = atoi(PQgetvalue(res, i, 6));
+                
+                // Count players per team
+                if (players[i].team == 1) {
+                    home_team_count++;
+                } else if (players[i].team == 2) {
+                    away_team_count++;
+                }
+            } else {
+                players[i].team = 0; // No team assignment yet
+            }
+        }
+        
+        // Assign teams to players without a team assignment
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team == 0) {
+                // Assign to team with fewer players
+                if (home_team_count < 4) {
+                    players[i].team = 1; // HOME
+                    home_team_count++;
+                } else {
+                    players[i].team = 2; // AWAY
+                    away_team_count++;
+                }
+            }
+        }
+        
         printf("{\n");
         printf("  \"game_set_id\": %d,\n", game_set_id);
         printf("  \"court\": \"%s\",\n", court);
-        printf("  \"team1\": [\n");
         
-        for (int i = 0; i < 4; i++) {
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
-            const char *birth_year_str = PQgetvalue(res, i, 3);
-            int position = atoi(PQgetvalue(res, i, 4));
+        // Output home team (team 1)
+        printf("  \"team2\": [\n"); // Team 2 in JSON corresponds to HOME team
+        int home_displayed = 0;
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team != 1) continue;
             
-            int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+            int birth_year = players[i].birth_year_str[0] != '\0' ? atoi(players[i].birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
             printf("    {\n");
-            printf("      \"user_id\": %d,\n", user_id);
-            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"user_id\": %d,\n", players[i].user_id);
+            printf("      \"username\": \"%s\",\n", players[i].username);
             if (birth_year > 0) {
                 printf("      \"birth_year\": %d,\n", birth_year);
             } else {
                 printf("      \"birth_year\": null,\n");
             }
-            printf("      \"position\": %d,\n", position);
+            printf("      \"position\": %d,\n", players[i].position);
             printf("      \"is_og\": %s\n", is_og ? "true" : "false");
-            printf("    }%s\n", i < 3 ? "," : "");
+            printf("    }%s\n", home_displayed < home_team_count - 1 ? "," : "");
+            
+            home_displayed++;
         }
         
         printf("  ],\n");
-        printf("  \"team2\": [\n");
         
-        for (int i = 4; i < 8; i++) {
-            int user_id = atoi(PQgetvalue(res, i, 1));
-            const char *username = PQgetvalue(res, i, 2);
-            const char *birth_year_str = PQgetvalue(res, i, 3);
-            int position = atoi(PQgetvalue(res, i, 4));
+        // Output away team (team 2)
+        printf("  \"team1\": [\n"); // Team 1 in JSON corresponds to AWAY team
+        int away_displayed = 0;
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team != 2) continue;
             
-            int birth_year = birth_year_str[0] != '\0' ? atoi(birth_year_str) : 0;
+            int birth_year = players[i].birth_year_str[0] != '\0' ? atoi(players[i].birth_year_str) : 0;
             bool is_og = birth_year > 0 && birth_year <= OG_BIRTH_YEAR;
             
             printf("    {\n");
-            printf("      \"user_id\": %d,\n", user_id);
-            printf("      \"username\": \"%s\",\n", username);
+            printf("      \"user_id\": %d,\n", players[i].user_id);
+            printf("      \"username\": \"%s\",\n", players[i].username);
             if (birth_year > 0) {
                 printf("      \"birth_year\": %d,\n", birth_year);
             } else {
                 printf("      \"birth_year\": null,\n");
             }
-            printf("      \"position\": %d,\n", position);
+            printf("      \"position\": %d,\n", players[i].position);
             printf("      \"is_og\": %s\n", is_og ? "true" : "false");
-            printf("    }%s\n", i < 7 ? "," : "");
+            printf("    }%s\n", away_displayed < away_team_count - 1 ? "," : "");
+            
+            away_displayed++;
         }
         
         printf("  ]\n");
