@@ -975,14 +975,16 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
     // Get available players (not assigned to a game)
     // Include team information to respect previous assignments
     sprintf(query, 
-            "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type, c.team "
-            "FROM checkins c "
-            "JOIN users u ON c.user_id = u.id "
-            "WHERE c.is_active = true "
-            "AND c.game_id IS NULL "
-            "AND c.queue_position >= %d "
-            "ORDER BY c.queue_position",
-            current_position);
+    "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type, c.team "
+    "FROM checkins c "
+    "JOIN users u ON c.user_id = u.id "
+    "WHERE c.is_active = true "
+    "AND c.game_id IS NULL "
+    "AND c.queue_position >= %d AND c.queue_position <= %d "
+    "ORDER BY c.team NULLS LAST, c.queue_position ASC "
+    "LIMIT 8",
+    current_position, current_position + 8);
+
     
     res = PQexec(conn, query);
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -1296,10 +1298,10 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                 "JOIN users u ON c.user_id = u.id "
                 "WHERE c.is_active = true "
                 "AND c.game_id IS NULL "
-                "AND c.queue_position >= %d "
+                "AND c.queue_position >= %d AND c.queue_position <= %d " 
                 "ORDER BY c.team NULLS LAST, c.queue_position ASC "
                 "LIMIT 8",
-                current_position);
+                current_position, current_position + 8);
                 
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) < 8) {
