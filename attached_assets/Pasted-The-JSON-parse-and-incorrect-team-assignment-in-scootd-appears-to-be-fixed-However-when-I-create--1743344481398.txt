@@ -1,0 +1,190 @@
+The JSON parse and incorrect team assignment in scootd appears to be fixed.  However, when I create “NEW-GAME” the badges should (WP-A) but the team is populated in HOME.  
+I still see the incorrect data in json from the client interaction versus propose-game “text” in CLI.  This is from the same state of databaose, comparing text to json.  The database is currently in this stage, you can run both commands:
+Please debug this by running 
+./scootd propose-game 1 1 
+Versus
+./scootd propose-game 1 1 json
+And isolate the difference.  It should just be a display difference.
+
+
+~/workspace$ ./scootd propose-game 1 1
+Successfully connected to the database
+=== Proposed Game (Game Set 1, Court: 1) ===
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+13  | nick                 | 8   | Yes | manual              
+14  | frank                | 13  | Yes | manual              
+15  | coach                | 14  | Yes | manual              
+16  | kiwi                 | 15  | Yes | manual              
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+9   | brandon              | 2   | Yes | win_promoted:1:A    
+10  | kevin                | 6   | Yes | win_promoted:1:A    
+11  | myron                | 12  | Yes | win_promoted:1:A    
+12  | kennyg               | 7   | Yes | win_promoted:1:A    
+~/workspace$ 
+
+~/workspace$ ./scootd propose-game 1 1 json
+Successfully connected to the database
+{
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 2,
+      "username": "brandon",
+      "birth_year": 1970,
+      "position": 9,
+      "is_og": true
+    },
+    {
+      "user_id": 6,
+      "username": "kevin",
+      "birth_year": 1963,
+      "position": 10,
+      "is_og": true
+    },
+    {
+      "user_id": 12,
+      "username": "myron",
+      "birth_year": 1969,
+      "position": 11,
+      "is_og": true
+    },
+    {
+      "user_id": 7,
+      "username": "kennyg",
+      "birth_year": 1961,
+      "position": 12,
+      "is_og": true
+    }
+  ],
+  "team2": [
+    {
+      "user_id": 8,
+      "username": "nick",
+      "birth_year": 1970,
+      "position": 13,
+      "is_og": true
+    },
+    {
+      "user_id": 13,
+      "username": "frank",
+      "birth_year": 1945,
+      "position": 14,
+      "is_og": true
+    },
+    {
+      "user_id": 14,
+      "username": "coach",
+      "birth_year": 1961,
+      "position": 15,
+      "is_og": true
+    },
+    {
+      "user_id": 15,
+      "username": "kiwi",
+      "birth_year": 1963,
+      "position": 16,
+      "is_og": true
+    }
+  ]
+}
+~/workspace$ ^C
+~/workspace$
+
+===== END SCOOTD EXECUTION =====
+
+2:16:37 PM [express] GET /api/scootd/game-set-status 304 in 877ms
+
+===== SCOOTD COMMAND EXECUTION =====
+🔵 EXECUTING: ./scootd propose-game 1 1 json
+✅ SCOOTD RAW OUTPUT: Successfully connected to the database
+{
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 2,
+      "username": "brandon",
+      "birth_year": 1970,
+      "position": 9,
+      "is_og": true
+    },
+    {
+      "user_id": 6,
+      "username": "kevin",
+      "birth_year": 1963,
+  ...(truncated)
+📊 PARSED JSON DATA: {
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 2,
+      "username": "brandon",
+      "birth_year": 1970,
+      "position": 9,
+      "is_og": true
+    },
+    {
+      "user_id": 6,
+      "username": "kevin",
+      "birth_year": 1963,
+      "position": 10,
+      "is_og": true
+    },
+    {
+      "user_id": 12,
+      "username": "myron",
+      "birth_year": 1969,
+      "position": 11,
+      "is_og": true
+    },
+    {
+      "user_id": 7,
+      "username": "kennyg",
+      "birth_year": 1961,
+      "position": 12,
+      "is_og": true
+    }
+  ],
+  "team2": [
+    {
+      "user_id": 8,
+      "username": "nick",
+      "birth_year": 1970,
+      "position": 13,
+      "is_og": true
+    },
+    {
+      "user_id": 13,
+      "username": "frank",
+      "birth_year": 1945,
+      "position": 14,
+      "is_og": true
+    },
+    {
+      "user_id": 14,
+      "username": "coach",
+      "birth_year": 1961,
+      "position": 15,
+      "is_og": true
+    },
+    {
+      "user_id": 15,
+      "username": "kiwi",
+      "birth_year": 1963,
+      "position": 16,
+      "is_og": true
+    }
+  ]
+}
+===== END SCOOTD EXECUTION =====
+
+
+===== SCOOTD COMMAND EXECUTION ===
