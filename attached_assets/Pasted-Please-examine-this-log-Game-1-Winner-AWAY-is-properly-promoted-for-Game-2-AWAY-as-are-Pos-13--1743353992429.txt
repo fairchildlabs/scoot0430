@@ -1,0 +1,71 @@
+Please examine this log.   Game #1 Winner AWAY is properly promoted for Game #2 AWAY, as are Pos(13-16) for the HOME team.   Propose-game and new-game show the correct output.   However, new-game-status shows the HOME team as pos(33-36) the autoup players from the GAME #1.  They should be the last players on the NEXT_UP list.  Current_queue_postion=17 and queue_next_up=37, which are the correct values for this state of active game #2.   The database is currently in this state.  Please debug and propose a fix – the problem is isolated to scootd, please don’t touch 
+==== Game Set Info ====
+ID: 1
+Created by: 0
+Gym: fonde
+Number of courts: 2
+Max consecutive games: 2
+Current queue position: 17
+Queue next up: 37
+Created at: 2025-03-30 10:53:50.265
+Active: Yes
+
+==== Active Games (1) ====
+Game #2 on Court 1 (Score: 0-0)
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+33  | rodney               | 9   | Yes | autoup:1:H
+34  | pat                  | 10  | Yes | autoup:1:H
+35  | sheldon              | 11  | Yes | autoup:1:H
+36  | scuzzydude           | 0   | No  | autoup:1:H
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+9   | brandon              | 2   | Yes | win_promoted:1:A
+10  | kevin                | 6   | Yes | win_promoted:1:A
+11  | myron                | 12  | Yes | win_promoted:1:A
+12  | kennyg               | 7   | Yes | win_promoted:1:A
+
+==== Next Up Players (16) ====
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+17  | derrick              | 16  | Yes | manual    
+18  | tim                  | 18  | Yes | manual    
+19  | mark                 | 17  | Yes | manual    
+20  | jack                 | 3   | No  | manual    
+21  | hakeem               | 4   | No  | manual    
+22  | medina               | 19  | Yes | manual    
+23  | kt                   | 20  | Yes | manual    
+24  | charles              | 21  | Yes | manual    
+25  | darrell              | 22  | Yes | manual    
+26  | ray                  | 23  | Yes | manual    
+27  | anthony              | 24  | Yes | manual    
+28  | chef                 | 25  | Yes | manual    
+29  | cleo                 | 26  | Yes | manual    
+30  | ron                  | 27  | Yes | manual    
+31  | mcghee               | 28  | Yes | manual    
+32  | zelle                | 29  | Yes | manual    
+
+==== Completed Games (1) ====
+
+Game #1 on Court 1 (Score: 1-21, Duration: 0:22)
+
+HOME TEAM: (LOSS)
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+1   | rodney               | 9   | Yes | manual    
+2   | pat                  | 10  | Yes | manual    
+3   | sheldon              | 11  | Yes | manual    
+4   | scuzzydude           | 0   | No  | manual    
+
+AWAY TEAM: (WIN)
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+5   | brandon              | 2   | Yes | manual    
+6   | kevin                | 6   | Yes | manual    
+7   | myron                | 12  | Yes | manual    
+8   | kennyg               | 7   | Yes | manual    
+~/workspace$
