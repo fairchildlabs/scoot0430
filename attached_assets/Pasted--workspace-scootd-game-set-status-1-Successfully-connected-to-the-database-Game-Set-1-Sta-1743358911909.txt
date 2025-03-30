@@ -1,0 +1,257 @@
+~/workspace$ ./scootd game-set-status 1
+Successfully connected to the database
+==== Game Set 1 Status ====
+Active: Yes
+Current Position: 1
+Queue Next Up: 29
+Max Consecutive Games: 2
+
+==== Game Set Info ====
+ID: 1
+Created by: 0
+Gym: fonde
+Number of courts: 2
+Max consecutive games: 2
+Current queue position: 1
+Queue next up: 29
+Created at: 2025-03-30 12:20:25.497
+Active: Yes
+
+==== Active Games (0) ====
+No active games
+
+==== Next Up Players (28) ====
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+1   | rodney               | 9   | Yes | manual    
+2   | pat                  | 10  | Yes | manual    
+3   | sheldon              | 11  | Yes | manual    
+4   | scuzzydude           | 0   | No  | manual    
+5   | brandon              | 2   | Yes | manual    
+6   | kevin                | 6   | Yes | manual    
+7   | myron                | 12  | Yes | manual    
+8   | kennyg               | 7   | Yes | manual    
+9   | nick                 | 8   | Yes | manual    
+10  | frank                | 13  | Yes | manual    
+11  | coach                | 14  | Yes | manual    
+12  | kiwi                 | 15  | Yes | manual    
+13  | derrick              | 16  | Yes | manual    
+14  | tim                  | 18  | Yes | manual    
+15  | mark                 | 17  | Yes | manual    
+16  | jack                 | 3   | No  | manual    
+17  | hakeem               | 4   | No  | manual    
+18  | medina               | 19  | Yes | manual    
+19  | kt                   | 20  | Yes | manual    
+20  | charles              | 21  | Yes | manual    
+21  | darrell              | 22  | Yes | manual    
+22  | ray                  | 23  | Yes | manual    
+23  | anthony              | 24  | Yes | manual    
+24  | chef                 | 25  | Yes | manual    
+25  | cleo                 | 26  | Yes | manual    
+26  | ron                  | 27  | Yes | manual    
+27  | mcghee               | 28  | Yes | manual    
+28  | zelle                | 29  | Yes | manual    
+
+==== Completed Games (0) ====
+No completed games
+~/workspace$ ./scootd new-game 1 1
+Successfully connected to the database
+=== Proposed Game (Game Set 1, Court: 1) ===
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+1   | rodney               | 9   | Yes | manual              
+2   | pat                  | 10  | Yes | manual              
+3   | sheldon              | 11  | Yes | manual              
+4   | scuzzydude           | 0   | No  | manual              
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+5   | brandon              | 2   | Yes | manual              
+6   | kevin                | 6   | Yes | manual              
+7   | myron                | 12  | Yes | manual              
+8   | kennyg               | 7   | Yes | manual              
+Game created successfully (Game ID: 1, Court: 1)
+~/workspace$ ./scootd game-set-status 1
+Successfully connected to the database
+==== Game Set 1 Status ====
+Active: Yes
+Current Position: 9
+Queue Next Up: 29
+Max Consecutive Games: 2
+
+==== Game Set Info ====
+ID: 1
+Created by: 0
+Gym: fonde
+Number of courts: 2
+Max consecutive games: 2
+Current queue position: 9
+Queue next up: 29
+Created at: 2025-03-30 12:20:25.497
+Active: Yes
+
+==== Active Games (1) ====
+Game #1 on Court 1 (Score: 0-0)
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+1   | rodney               | 9   | Yes | manual    
+2   | pat                  | 10  | Yes | manual    
+3   | sheldon              | 11  | Yes | manual    
+4   | scuzzydude           | 0   | No  | manual    
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+5   | brandon              | 2   | Yes | manual    
+6   | kevin                | 6   | Yes | manual    
+7   | myron                | 12  | Yes | manual    
+8   | kennyg               | 7   | Yes | manual    
+
+==== Next Up Players (20) ====
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+9   | nick                 | 8   | Yes | manual    
+10  | frank                | 13  | Yes | manual    
+11  | coach                | 14  | Yes | manual    
+12  | kiwi                 | 15  | Yes | manual    
+13  | derrick              | 16  | Yes | manual    
+14  | tim                  | 18  | Yes | manual    
+15  | mark                 | 17  | Yes | manual    
+16  | jack                 | 3   | No  | manual    
+17  | hakeem               | 4   | No  | manual    
+18  | medina               | 19  | Yes | manual    
+19  | kt                   | 20  | Yes | manual    
+20  | charles              | 21  | Yes | manual    
+21  | darrell              | 22  | Yes | manual    
+22  | ray                  | 23  | Yes | manual    
+23  | anthony              | 24  | Yes | manual    
+24  | chef                 | 25  | Yes | manual    
+25  | cleo                 | 26  | Yes | manual    
+26  | ron                  | 27  | Yes | manual    
+27  | mcghee               | 28  | Yes | manual    
+28  | zelle                | 29  | Yes | manual    
+
+==== Completed Games (0) ====
+No completed games
+~/workspace$ ./scootd end-game 1 1 21
+Successfully connected to the database
+Game 1 ended with score: 1-21
+Team has played 1 consecutive games (including current)
+Team has played 1 consecutive games (max: 2) - promoting winners
+Deactivated 0 player check-ins
+Updated 20 existing next-up player positions
+Promoting 4 players from team 2:
+- brandon promoted to position 9
+- kevin promoted to position 10
+- myron promoted to position 11
+- kennyg promoted to position 12
+Updated queue_next_up to 33 after handling win_promoted players
+Auto-checking in 4 players with autoup=true:
+Using queue_next_up: 33 for auto-checking in players
+- rodney auto-checked in at position 33
+- pat auto-checked in at position 34
+- sheldon auto-checked in at position 35
+- scuzzydude auto-checked in at position 36
+Game 1 successfully ended
+~/workspace$ ./scootd new-game 1 1
+Successfully connected to the database
+=== Proposed Game (Game Set 1, Court: 1) ===
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+13  | nick                 | 8   | Yes | manual              
+14  | frank                | 13  | Yes | manual              
+15  | coach                | 14  | Yes | manual              
+16  | kiwi                 | 15  | Yes | manual              
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type                
+---------------------------------------------------------
+9   | brandon              | 2   | Yes | win_promoted:1:A    
+10  | kevin                | 6   | Yes | win_promoted:1:A    
+11  | myron                | 12  | Yes | win_promoted:1:A    
+12  | kennyg               | 7   | Yes | win_promoted:1:A    
+Game created successfully (Game ID: 2, Court: 1)
+~/workspace$ ./scootd game-set-status 1
+Successfully connected to the database
+==== Game Set 1 Status ====
+Active: Yes
+Current Position: 17
+Queue Next Up: 37
+Max Consecutive Games: 2
+
+==== Game Set Info ====
+ID: 1
+Created by: 0
+Gym: fonde
+Number of courts: 2
+Max consecutive games: 2
+Current queue position: 17
+Queue next up: 37
+Created at: 2025-03-30 12:20:25.497
+Active: Yes
+
+==== Active Games (1) ====
+Game #2 on Court 1 (Score: 0-0)
+
+HOME TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+33  | rodney               | 9   | Yes | autoup:1:H
+34  | pat                  | 10  | Yes | autoup:1:H
+35  | sheldon              | 11  | Yes | autoup:1:H
+36  | scuzzydude           | 0   | No  | autoup:1:H
+
+AWAY TEAM:
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+9   | brandon              | 2   | Yes | win_promoted:1:A
+10  | kevin                | 6   | Yes | win_promoted:1:A
+11  | myron                | 12  | Yes | win_promoted:1:A
+12  | kennyg               | 7   | Yes | win_promoted:1:A
+
+==== Next Up Players (16) ====
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+17  | derrick              | 16  | Yes | manual    
+18  | tim                  | 18  | Yes | manual    
+19  | mark                 | 17  | Yes | manual    
+20  | jack                 | 3   | No  | manual    
+21  | hakeem               | 4   | No  | manual    
+22  | medina               | 19  | Yes | manual    
+23  | kt                   | 20  | Yes | manual    
+24  | charles              | 21  | Yes | manual    
+25  | darrell              | 22  | Yes | manual    
+26  | ray                  | 23  | Yes | manual    
+27  | anthony              | 24  | Yes | manual    
+28  | chef                 | 25  | Yes | manual    
+29  | cleo                 | 26  | Yes | manual    
+30  | ron                  | 27  | Yes | manual    
+31  | mcghee               | 28  | Yes | manual    
+32  | zelle                | 29  | Yes | manual    
+
+==== Completed Games (1) ====
+
+Game #1 on Court 1 (Score: 1-21, Duration: 0:11)
+
+HOME TEAM: (LOSS)
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+1   | rodney               | 9   | Yes | manual    
+2   | pat                  | 10  | Yes | manual    
+3   | sheldon              | 11  | Yes | manual    
+4   | scuzzydude           | 0   | No  | manual    
+
+AWAY TEAM: (WIN)
+Pos | Username             | UID | OG  | Type      
+--------------------------------------------------
+5   | brandon              | 2   | Yes | manual    
+6   | kevin                | 6   | Yes | manual    
+7   | myron                | 12  | Yes | manual    
+8   | kennyg               | 7   | Yes | manual    
