@@ -991,9 +991,9 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             "  JOIN games g ON gp.game_id = g.id "
             "  WHERE g.state = 'active' AND g.set_id = %d "
             ") "
-            "AND c.queue_position >= %d "
-            "ORDER BY c.queue_position",
-            game_set_id, current_position);
+            "AND c.queue_position >= %d AND c.queue_position < %d "
+            "ORDER BY c.team NULLS LAST, c.queue_position ASC",
+            game_set_id, current_position, current_position + 8);
     
     res = PQexec(conn, query);
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -1302,7 +1302,7 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
         // First get players with team assignments (from previous promotion)
         // then fill the rest in position order
         sprintf(query, 
-                "SELECT c.id, c.user_id, u.username, c.queue_position, c.team "
+                "SELECT c.id, c.user_id, u.username, u.birth_year, c.queue_position, c.type, c.team "
                 "FROM checkins c "
                 "JOIN users u ON c.user_id = u.id "
                 "WHERE c.is_active = true "
@@ -1312,10 +1312,10 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                 "  JOIN games g ON gp.game_id = g.id "
                 "  WHERE g.state = 'active' AND g.set_id = %d "
                 ") "
-                "AND c.queue_position >= %d "
+                "AND c.queue_position >= %d AND c.queue_position < %d "
                 "ORDER BY c.team NULLS LAST, c.queue_position ASC "
                 "LIMIT 8",
-                game_set_id, current_position);
+                game_set_id, current_position, current_position + 8);
                 
         res = PQexec(conn, query);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) < 8) {
@@ -1643,12 +1643,12 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
             // Get players for this game
             char player_query[1024];
             sprintf(player_query, 
-                    "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position "
+                    "SELECT gp.team, u.id, u.username, u.birth_year, c.queue_position, c.type "
                     "FROM game_players gp "
                     "JOIN users u ON gp.user_id = u.id "
                     "JOIN checkins c ON c.user_id = gp.user_id AND c.game_id = gp.game_id "
                     "WHERE gp.game_id = %d "
-                    "ORDER BY gp.team, c.queue_position",
+                    "ORDER BY gp.team, gp.relative_position",
                     game_id);
             
             PGresult *player_res = PQexec(conn, player_query);
@@ -1886,7 +1886,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                     "JOIN users u ON gp.user_id = u.id "
                     "JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
                     "WHERE gp.game_id = %d "
-                    "ORDER BY gp.team, c.queue_position",
+                    "ORDER BY gp.team, gp.relative_position",
                     game_id);
             
             PGresult *player_res = PQexec(conn, player_query);
@@ -2074,7 +2074,7 @@ void get_game_set_status(PGconn *conn, int game_set_id, const char *format) {
                         "JOIN users u ON gp.user_id = u.id "
                         "JOIN checkins c ON gp.user_id = c.user_id AND c.game_id = gp.game_id "
                         "WHERE gp.game_id = %d "
-                        "ORDER BY gp.team, c.queue_position",
+                        "ORDER BY gp.team, gp.relative_position",
                         game_id);
                 
                 PGresult *player_res = PQexec(conn, player_query);
