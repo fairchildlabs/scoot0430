@@ -1,0 +1,117 @@
+===== SCOOTD COMMAND EXECUTION =====
+🔵 EXECUTING: ./scootd propose-game 1 1 json
+✅ SCOOTD RAW OUTPUT: Successfully connected to the database
+{
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 9,
+      "username": "rodney",
+      "birth_year": 1966,
+      "position": 1,
+      "is_og": true
+    },
+    {
+      "user_id": 10,
+      "username": "pat",
+      "birth_year": 1966,
+    ...(truncated)
+📊 PARSED JSON DATA: {
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 9,
+      "username": "rodney",
+      "birth_year": 1966,
+      "position": 1,
+      "is_og": true
+    },
+    {
+      "user_id": 10,
+      "username": "pat",
+      "birth_year": 1966,
+      "position": 2,
+      "is_og": true
+    },
+    {
+      "user_id": 11,
+      "username": "sheldon",
+      "birth_year": 1964,
+      "position": 3,
+      "is_og": true
+    },
+    {
+      "user_id": 0,
+      "username": "scuzzydude",
+      "birth_year": 2000,
+      "position": 4,
+      "is_og": false
+    }
+  ],
+  "team2": [
+    {
+      "user_id": 2,
+      "username": "brandon",
+      "birth_year": 1970,
+      "position": 5,
+      "is_og": true
+    },
+    {
+      "user_id": 6,
+      "username": "kevin",
+      "birth_year": 1963,
+      "position": 6,
+      "is_og": true
+    },
+    {
+      "user_id": 12,
+      "username": "myron",
+      "birth_year": 1969,
+      "position": 7,
+      "is_og": true
+    },
+    {
+      "user_id": 7,
+      "username": "kennyg",
+      "birth_year": 1961,
+      "position": 8,
+      "is_og": true
+    }
+  ]
+}
+===== END SCOOTD EXECUTION =====
+
+12:59:24 AM [express] POST /api/scootd/propose-game 200 in 556ms
+
+===== SCOOTD COMMAND EXECUTION =====
+🔵 EXECUTING: ./scootd new-game 1 1 json
+✅ SCOOTD RAW OUTPUT: Successfully connected to the database
+{
+  "game_set_id": 1,
+  "court": "1",
+  "team1": [
+    {
+      "user_id": 9,
+      "username": "rodney",
+      "birth_year": 1966,
+      "position": 1,
+      "is_og": true
+    },
+    {
+      "user_id": 10,
+      "username": "pat",
+      "birth_year": 1966,
+    ...(truncated)
+⚠️ FAILED TO PARSE JSON FROM OUTPUT: SyntaxError: Unexpected non-whitespace character after JSON at position 1102
+    at JSON.parse (<anonymous>)
+    at executeScootd (/home/runner/workspace/server/routes.ts:39:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:865:22)
+===== END SCOOTD EXECUTION =====
+
+POST /api/scootd/new-game - Error parsing JSON: SyntaxError: Unexpected non-whitespace character after JSON at position 1102
+    at JSON.parse (<anonymous>)
+    at <anonymous> (/home/runner/workspace/server/routes.ts:877:27)
+    at process.processTicks
