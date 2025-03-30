@@ -247,8 +247,9 @@ const NewGamePage = () => {
       return player?.checkin_type || '';
     };
     
-    // Map team1 (home) players from proposed game data
-    homePlayers = proposedGameData.team1.map((player, index) => ({
+    // IMPORTANT: Swap team1 and team2 to match text output format
+    // Map team2 (home) players from proposed game data
+    homePlayers = proposedGameData.team2.map((player, index) => ({
       userId: player.user_id,
       username: player.username,
       birthYear: player.birth_year,
@@ -258,8 +259,8 @@ const NewGamePage = () => {
       type: findPromotionType(player.user_id)
     }));
     
-    // Map team2 (away) players from proposed game data
-    awayPlayers = proposedGameData.team2.map((player, index) => ({
+    // Map team1 (away) players from proposed game data
+    awayPlayers = proposedGameData.team1.map((player, index) => ({
       userId: player.user_id,
       username: player.username,
       birthYear: player.birth_year,
@@ -466,8 +467,8 @@ const NewGamePage = () => {
                   <CardContent>
                     <div className="space-y-2">
                       {proposedGameData ? (
-                        // Show players from scootd proposal
-                        proposedGameData.team1.map((player, index) => {
+                        // Show players from scootd proposal - SWAPPED to match text output
+                        proposedGameData.team2.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
                           const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
                           return (
@@ -503,8 +504,8 @@ const NewGamePage = () => {
                   <CardContent>
                     <div className="space-y-2">
                       {proposedGameData ? (
-                        // Show players from scootd proposal
-                        proposedGameData.team2.map((player, index) => {
+                        // Show players from scootd proposal - SWAPPED to match text output
+                        proposedGameData.team1.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
                           const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
                           return (
