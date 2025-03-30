@@ -14,6 +14,47 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 /**
+ * Extracts JSON from a string that might contain text before or after the JSON
+ * Uses a more robust approach to handle potential non-JSON content
+ * @param str String that contains JSON somewhere within it
+ * @returns Parsed JSON object or null if no valid JSON found
+ */
+function extractAndParseJson(str: string): any | null {
+  try {
+    // Find the first opening brace
+    const jsonStartIndex = str.indexOf('{');
+    if (jsonStartIndex === -1) return null;
+    
+    let jsonStr = str.substring(jsonStartIndex);
+    let braceCount = 0;
+    let jsonEndIndex = -1;
+    
+    // Find the matching closing brace by counting brace pairs
+    for (let i = 0; i < jsonStr.length; i++) {
+      if (jsonStr[i] === '{') braceCount++;
+      if (jsonStr[i] === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          jsonEndIndex = i;
+          break;
+        }
+      }
+    }
+    
+    if (jsonEndIndex === -1) return null;
+    
+    // Extract just the JSON part
+    const extractedJson = jsonStr.substring(0, jsonEndIndex + 1);
+    
+    // Try to parse it
+    return JSON.parse(extractedJson);
+  } catch (error) {
+    console.error("Failed to extract and parse JSON:", error);
+    return null;
+  }
+}
+
+/**
  * Executes a scootd command and returns the result
  * @param command The scootd command to execute
  * @returns The command output (stdout)
@@ -32,15 +73,11 @@ async function executeScootd(command: string): Promise<string> {
     console.log(`✅ SCOOTD RAW OUTPUT: ${stdout.substring(0, 300)}${stdout.length > 300 ? '...(truncated)' : ''}`);
     
     // Try to extract and log JSON if present
-    const jsonStartIndex = stdout.indexOf('{');
-    if (jsonStartIndex !== -1) {
-      try {
-        const jsonStr = stdout.substring(jsonStartIndex);
-        const jsonData = JSON.parse(jsonStr);
-        console.log(`📊 PARSED JSON DATA:`, JSON.stringify(jsonData, null, 2));
-      } catch (jsonError) {
-        console.error(`⚠️ FAILED TO PARSE JSON FROM OUTPUT:`, jsonError);
-      }
+    const jsonData = extractAndParseJson(stdout);
+    if (jsonData) {
+      console.log(`📊 PARSED JSON DATA:`, JSON.stringify(jsonData, null, 2));
+    } else {
+      console.error(`⚠️ FAILED TO PARSE JSON FROM OUTPUT`);
     }
     
     console.log(`===== END SCOOTD EXECUTION =====\n`);
@@ -517,15 +554,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use the active game set ID
       const output = await executeScootd(`game-set-status ${activeGameSet.id} json`);
       
-      // Parse the output to extract just the JSON part (ignoring connection messages)
-      const jsonStartIndex = output.indexOf('{');
-      if (jsonStartIndex === -1) {
-        throw new Error("Invalid output format from scootd");
-      }
+      // Extract and parse JSON using our helper function
+      const data = extractAndParseJson(output);
       
-      const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      if (data) {
+        return res.json(data);
+      } else {
+        console.error('Error parsing game-set-status JSON');
+        // Fall back to returning the raw output if JSON parsing fails
+        return res.json({ success: false, raw: output, error: "Failed to parse JSON response" });
+      }
     } catch (error) {
       console.error('GET /api/scootd/game-set-status - Error:', error);
       res.status(500).json({ error: (error as Error).message });
@@ -540,15 +578,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gameSetId = parseInt(req.params.id);
       const output = await executeScootd(`game-set-status ${gameSetId} json`);
       
-      // Parse the output to extract just the JSON part (ignoring connection messages)
-      const jsonStartIndex = output.indexOf('{');
-      if (jsonStartIndex === -1) {
-        throw new Error("Invalid output format from scootd");
-      }
+      // Extract and parse JSON using our helper function
+      const data = extractAndParseJson(output);
       
-      const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      if (data) {
+        return res.json(data);
+      } else {
+        console.error('Error parsing game-set-status/:id JSON');
+        // Fall back to returning the raw output if JSON parsing fails
+        return res.json({ success: false, raw: output, error: "Failed to parse JSON response" });
+      }
     } catch (error) {
       console.error('GET /api/scootd/game-set-status/:id - Error:', error);
       res.status(500).json({ error: (error as Error).message });
@@ -574,15 +613,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use the game-set-status command to load games for this set
       const output = await executeScootd(`game-set-status ${gameSetId} json`);
       
-      // Parse the output to extract just the JSON part (ignoring connection messages)
-      const jsonStartIndex = output.indexOf('{');
-      if (jsonStartIndex === -1) {
-        throw new Error("Invalid output format from scootd");
-      }
+      // Extract and parse JSON using our helper function
+      const data = extractAndParseJson(output);
       
-      const jsonStr = output.substring(jsonStartIndex);
-      const data = JSON.parse(jsonStr);
-      res.json(data);
+      if (data) {
+        return res.json(data);
+      } else {
+        console.error('Error parsing game-set/:id JSON');
+        // Fall back to returning the raw output if JSON parsing fails
+        return res.json({ success: false, raw: output, error: "Failed to parse JSON response" });
+      }
     } catch (error) {
       console.error('GET /api/scootd/game-set/:id - Error:', error);
       res.status(500).json({ error: (error as Error).message });
@@ -826,22 +866,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Execute the scootd propose-game command WITHOUT create flag
       const output = await executeScootd(`propose-game ${gameSetId} ${court} json`);
       
-      // Parse the output to extract just the JSON part
-      const jsonStartIndex = output.indexOf('{');
-      if (jsonStartIndex === -1) {
-        // For commands without JSON response, return the raw output
+      // Extract and parse JSON using our helper function
+      const data = extractAndParseJson(output);
+      
+      if (!data) {
+        console.error('POST /api/scootd/propose-game - Error parsing JSON');
         return res.json({ success: true, raw: output });
       }
       
-      const jsonStr = output.substring(jsonStartIndex);
-      
-      try {
-        const data = JSON.parse(jsonStr);
-        res.json(data);
-      } catch (jsonError) {
-        console.error('POST /api/scootd/propose-game - Error parsing JSON:', jsonError);
-        res.json({ success: true, raw: output });
+      // Add checkin_type field to each player object if they're win/loss promoted
+      if (data.team1 && Array.isArray(data.team1)) {
+        // Find win/loss promoted players from game-set-status
+        const gameSetStatusOutput = await executeScootd(`game-set-status ${data.game_set_id} json`);
+        const gameSetStatus = extractAndParseJson(gameSetStatusOutput);
+        
+        if (gameSetStatus && gameSetStatus.next_up_players) {
+          // Map user_ids to their checkin_types
+          const userCheckinTypes = new Map();
+          gameSetStatus.next_up_players.forEach((player: any) => {
+            if (player.user_id && player.checkin_type) {
+              userCheckinTypes.set(player.user_id, player.checkin_type);
+            }
+          });
+          
+          // Add checkin_type to team1 players
+          data.team1.forEach((player: any) => {
+            if (userCheckinTypes.has(player.user_id)) {
+              player.checkin_type = userCheckinTypes.get(player.user_id);
+            }
+          });
+          
+          // Add checkin_type to team2 players
+          data.team2.forEach((player: any) => {
+            if (userCheckinTypes.has(player.user_id)) {
+              player.checkin_type = userCheckinTypes.get(player.user_id);
+            }
+          });
+        }
       }
+      
+      res.json(data);
     } catch (error) {
       console.error('POST /api/scootd/propose-game - Error:', error);
       res.status(500).json({ error: (error as Error).message });
@@ -864,22 +928,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Execute the scootd new-game command instead of propose-game with create flag
       const output = await executeScootd(`new-game ${gameSetId} ${court} json`);
       
-      // Parse the output to extract just the JSON part
-      const jsonStartIndex = output.indexOf('{');
-      if (jsonStartIndex === -1) {
-        // For commands without JSON response, return the raw output
+      // Extract and parse JSON using our helper function
+      const data = extractAndParseJson(output);
+      
+      if (!data) {
+        console.error('POST /api/scootd/new-game - Error parsing JSON');
         return res.json({ success: true, raw: output });
       }
       
-      const jsonStr = output.substring(jsonStartIndex);
-      
-      try {
-        const data = JSON.parse(jsonStr);
-        res.json(data);
-      } catch (jsonError) {
-        console.error('POST /api/scootd/new-game - Error parsing JSON:', jsonError);
-        res.json({ success: true, raw: output });
+      // Add checkin_type field to each player object if they're win/loss promoted
+      if (data.team1 && Array.isArray(data.team1)) {
+        // Find win/loss promoted players from game-set-status
+        const gameSetStatusOutput = await executeScootd(`game-set-status ${data.game_set_id} json`);
+        const gameSetStatus = extractAndParseJson(gameSetStatusOutput);
+        
+        if (gameSetStatus && gameSetStatus.next_up_players) {
+          // Map user_ids to their checkin_types
+          const userCheckinTypes = new Map();
+          gameSetStatus.next_up_players.forEach((player: any) => {
+            if (player.user_id && player.checkin_type) {
+              userCheckinTypes.set(player.user_id, player.checkin_type);
+            }
+          });
+          
+          // Add checkin_type to team1 players
+          data.team1.forEach((player: any) => {
+            if (userCheckinTypes.has(player.user_id)) {
+              player.checkin_type = userCheckinTypes.get(player.user_id);
+            }
+          });
+          
+          // Add checkin_type to team2 players
+          data.team2.forEach((player: any) => {
+            if (userCheckinTypes.has(player.user_id)) {
+              player.checkin_type = userCheckinTypes.get(player.user_id);
+            }
+          });
+        }
       }
+      
+      res.json(data);
     } catch (error) {
       console.error('POST /api/scootd/new-game - Error:', error);
       res.status(500).json({ error: (error as Error).message });
