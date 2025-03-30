@@ -317,46 +317,7 @@ const NewGamePage = () => {
     return (currentYear - birthYear) >= 75;
   };
 
-  // PromotionBadge component for consistent badge display
-  const PromotionBadge = ({ checkinType }: { checkinType?: string }) => {
-    if (!checkinType) return null;
-    
-    // Helper function to parse checkin_type
-    const parseCheckinType = (type: string = '') => {
-      if (!type.includes(':')) return { baseType: type };
-      
-      const parts = type.split(':');
-      return {
-        baseType: parts[0],
-        teamNumber: parts[1],
-        teamDesignation: parts.length >= 3 ? parts[2] : ''
-      };
-    };
-    
-    const { baseType, teamDesignation } = parseCheckinType(checkinType);
-    
-    if (baseType === 'win_promoted') {
-      return (
-        <span className="ml-2 text-sm text-green-400">
-          (WP{teamDesignation ? `-${teamDesignation}` : ''})
-        </span>
-      );
-    } else if (baseType === 'loss_promoted') {
-      return (
-        <span className="ml-2 text-sm text-yellow-400">
-          (LP{teamDesignation ? `-${teamDesignation}` : ''})
-        </span>
-      );
-    } else if (baseType === 'autoup') {
-      return (
-        <span className="ml-2 text-sm text-blue-400">
-          (Autoup)
-        </span>
-      );
-    }
-    
-    return null;
-  };
+  // Using the imported PromotionBadge component for consistent badge display
 
   // We've removed the scootdPlayerMutation as it's not needed anymore
   // This implements the user's request to remove checkout/bump/swap buttons
