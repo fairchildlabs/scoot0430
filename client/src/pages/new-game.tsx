@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, scootdApiRequest } from "@/lib/queryClient";
 import { type InsertGame } from "@shared/schema";
+import PromotionBadge from "@/components/PromotionBadge";
 
 // Define types for better type safety
 type GameSetStatus = {

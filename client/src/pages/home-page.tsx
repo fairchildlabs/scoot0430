@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
 import { apiRequest, scootdApiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import PromotionBadge from "@/components/PromotionBadge";
 
 interface GameSetStatus {
   game_set?: {
@@ -126,57 +127,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   
-  // Helper function to get promotion badge text
-  const getPromotionBadge = (checkinType: string | undefined) => {
-    if (!checkinType) return null;
-    
-    if (checkinType.includes('win_promoted')) {
-      return 'WP';
-    } else if (checkinType.includes('loss_promoted')) {
-      return 'LP';
-    } else if (checkinType.includes('autoup')) {
-      return 'Autoup';
-    }
-    return null;
-  };
-  
-  // Helper component for promotion badges
-  const PromotionBadge = ({ checkinType }: { checkinType: string | undefined }) => {
-    if (!checkinType) return null;
-    
-    let badge = getPromotionBadge(checkinType);
-    if (!badge) return null;
-    
-    // Add team designation for win/loss promoted players
-    if ((checkinType.includes('win_promoted') || checkinType.includes('loss_promoted')) && checkinType.includes(':')) {
-      // Check if we have three parts (e.g., win_promoted:1:H)
-      const parts = checkinType.split(':');
-      if (parts.length >= 3) {
-        // Use the team letter from the third part
-        badge += `-${parts[2]}`;
-      } else if (parts.length === 2) {
-        // Fall back to the team number from the second part
-        badge += `-${parts[1] === '1' ? 'H' : 'A'}`;
-      }
-    }
-    
-    let className = "ml-2 text-sm ";
-    
-    // Set the color based on promotion type
-    if (checkinType.includes('win_promoted')) {
-      className += "text-green-400";
-    } else if (checkinType.includes('loss_promoted')) {
-      className += "text-yellow-400";
-    } else if (checkinType.includes('autoup')) {
-      className += "text-blue-400";
-    }
-    
-    return (
-      <span className={className}>
-        ({badge})
-      </span>
-    );
-  };
+  // Now using the imported PromotionBadge component
   const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number; autoPromote: boolean }>>({});
   const { toast } = useToast();
   
@@ -723,8 +674,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
               <div className="space-y-2">
                 {game.players
                   ?.filter((p: any) => p.team === 1)
-                  .map((p: any) => (
-                    <div key={`home-player-${p.user_id || p.username}-${p.queuePosition}`} className="p-2 rounded-md text-sm bg-secondary/10">
+                  .map((p: any, index: number) => (
+                    <div key={`home-player-${p.username}-${p.queuePosition}-${index}-game-${game.id}`} className="p-2 rounded-md text-sm bg-secondary/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
@@ -770,16 +721,14 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
               <div className="space-y-2">
                 {game.players
                   ?.filter((p: any) => p.team === 2)
-                  .map((p: any) => (
-                    <div key={`away-player-${p.user_id || p.username}-${p.queuePosition}`} className="p-2 rounded-md text-sm bg-white/10">
+                  .map((p: any, index: number) => (
+                    <div key={`away-player-${p.username}-${p.queuePosition}-${index}-game-${game.id}`} className="p-2 rounded-md text-sm bg-white/10">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-4">
                           <span className="font-mono text-lg">#{p.queuePosition}</span>
                           <span>
                             {p.username}
-                            {(p.checkin_type || p.type) && (
-                              <PromotionBadge checkinType={p.checkin_type || p.type} />
-                            )}
+                            <PromotionBadge checkinType={p.checkin_type || p.type} />
                           </span>
                         </div>
                         {isOG(p.birthYear) && (
@@ -913,8 +862,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                     <div className="mt-8">
                       <h3 className="text-lg font-medium mb-4">Next Up</h3>
                       <div className="space-y-2">
-                        {nextUpPlayers.map((player: any, index) => (
-                          <div key={`player-${player.user_id || player.queuePosition || index}`} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
+                        {nextUpPlayers.map((player: any, index: number) => (
+                          <div key={`next-player-${player.username}-${player.queuePosition}-${index}`} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
                             <div className="flex items-center gap-4">
                               <span className="font-mono text-lg">#{player.queuePosition}</span>
                               <span>
