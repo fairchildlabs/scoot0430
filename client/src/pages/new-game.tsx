@@ -133,12 +133,23 @@ const NewGamePage = () => {
         setIsProposalLoading(true);
         try {
           console.log('Auto-proposing game for game set:', activeGameSet.id, 'on court:', selectedCourt);
-          const data = await scootdApiRequest<ProposedGameData>("POST", "propose-game", {
+          const data = await scootdApiRequest<any>("POST", "propose-game", {
             gameSetId: activeGameSet.id,
             court: selectedCourt
           });
           console.log('Auto-proposed game data:', data);
-          setProposedGameData(data);
+          
+          // Check if we received an error response from scootd
+          // Example: { "status": "GAME_IN_PROGRESS", "message": "Game already in progress on court 1 (Game ID: 4)" }
+          if (data && data.status && data.status === "GAME_IN_PROGRESS") {
+            setStatusMessage(data.message || "Game already in progress on this court.");
+            // Don't set proposedGameData in this case to avoid errors
+          } else if (data && data.team1 && data.team2) {
+            // Only set the game data if it has the expected structure
+            setProposedGameData(data);
+          } else {
+            throw new Error("Received unexpected data format from server");
+          }
         } catch (error) {
           console.error('Auto game proposal failed:', error);
           const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -428,7 +439,7 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {proposedGameData ? (
+                      {proposedGameData && proposedGameData.team2 ? 
                         // Show players from scootd proposal - SWAPPED to match text output
                         proposedGameData.team2.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
@@ -448,12 +459,12 @@ const NewGamePage = () => {
                             />
                           );
                         })
-                      ) : (
+                        : 
                         // Show locally calculated teams
                         homePlayers.map((player: any, index: number) => (
                           <PlayerCard key={player.id || `home-${index}`} player={player} index={index} />
                         ))
-                      )}
+                      }
                     </div>
                   </CardContent>
                 </Card>
@@ -465,7 +476,7 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {proposedGameData ? (
+                      {proposedGameData && proposedGameData.team1 ? 
                         // Show players from scootd proposal - SWAPPED to match text output
                         proposedGameData.team1.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
@@ -486,7 +497,7 @@ const NewGamePage = () => {
                             />
                           );
                         })
-                      ) : (
+                        : 
                         // Show locally calculated teams
                         awayPlayers.map((player: any, index: number) => (
                           <PlayerCard
@@ -496,7 +507,7 @@ const NewGamePage = () => {
                             isAway
                           />
                         ))
-                      )}
+                      }
                     </div>
                   </CardContent>
                 </Card>
