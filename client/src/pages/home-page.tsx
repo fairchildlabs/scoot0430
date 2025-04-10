@@ -823,15 +823,35 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                   </CardTitle>
                   {canEndGames && (
                     <div className="flex gap-2">
-                      {/* Only show New Game button when there are no active games (only finished games or no games) */}
-                      {activeGamesList.length === 0 && (
-                        <Button 
-                          onClick={() => setLocation("/games?tab=new-game")}
-                          variant="outline"
-                        >
-                          New Game
-                        </Button>
-                      )}
+                      {/* Display New Game button based on available courts */}
+                      {(() => {
+                        // Get total number of courts from game set info
+                        const totalCourts = gameSetStatus?.game_set_info?.number_of_courts || 2;
+                        
+                        // Find active courts
+                        const activeCourts = activeGamesList.map(game => game.court);
+                        
+                        // If all courts have active games, don't show the button
+                        if (activeCourts.length >= totalCourts) return null;
+                        
+                        // Find the first available court number
+                        let availableCourt = "1";
+                        for (let i = 1; i <= totalCourts; i++) {
+                          if (!activeCourts.includes(i.toString())) {
+                            availableCourt = i.toString();
+                            break;
+                          }
+                        }
+                        
+                        return (
+                          <Button 
+                            onClick={() => setLocation(`/games?tab=new-game&court=${availableCourt}`)}
+                            variant="outline"
+                          >
+                            New Game (ct {availableCourt})
+                          </Button>
+                        );
+                      })()}
                       {gameSetStatus && (
                         <Button 
                           onClick={() => handleEndSet(gameSetStatus.id)}

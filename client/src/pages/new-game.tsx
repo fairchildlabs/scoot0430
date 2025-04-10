@@ -81,7 +81,11 @@ type ProposedGameData = {
 const NewGamePage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [selectedCourt, setSelectedCourt] = useState<string>("1");
+  // Parse and use the court parameter from the URL if available
+  const [location] = useLocation();
+  const searchParams = new URLSearchParams(location.split('?')[1]);
+  const courtParam = searchParams.get('court');
+  const [selectedCourt, setSelectedCourt] = useState<string>(courtParam || "1");
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [, navigate] = useLocation();
 
