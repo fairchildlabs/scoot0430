@@ -83,8 +83,17 @@ const NewGamePage = () => {
   const { toast } = useToast();
   // Parse and use the court parameter from the URL if available
   const [location] = useLocation();
-  const searchParams = new URLSearchParams(location.split('?')[1]);
+  const searchParams = new URLSearchParams(location.split('?')[1] || '');
   const courtParam = searchParams.get('court');
+  
+  // Debug output to check what's coming from URL
+  console.log('URL parameters:', { 
+    fullLocation: location,
+    searchPart: location.split('?')[1],
+    courtParam: courtParam 
+  });
+  
+  // Important: Initialize state with court parameter
   const [selectedCourt, setSelectedCourt] = useState<string>(courtParam || "1");
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [, navigate] = useLocation();
@@ -374,7 +383,10 @@ const NewGamePage = () => {
     return (
       <RadioGroup
         value={selectedCourt}
-        onValueChange={setSelectedCourt}
+        onValueChange={(value) => {
+          console.log('Court selection changed to:', value);
+          setSelectedCourt(value);
+        }}
         className="flex items-center justify-center gap-4 bg-white rounded-lg p-4"
       >
         {Array.from({ length: numberOfCourts }, (_, i) => i + 1).map((courtNumber) => (
@@ -422,7 +434,7 @@ const NewGamePage = () => {
           ) : (
             <div className="space-y-6">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Select Court</h3>
+                <h3 className="text-lg font-medium">Select Court {courtParam && `(Court ${courtParam} preselected)`}</h3>
                 <CourtSelection />
               </div>
               
