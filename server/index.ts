@@ -2,10 +2,22 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { pool, testDatabaseConnection } from "./db";
+import fileUpload from "express-fileupload";
+import path from "path";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(fileUpload({
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  useTempFiles: false,
+  createParentPath: true,
+  abortOnLimit: true
+}));
+
+// Serve uploaded files
+const uploadDir = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadDir));
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
