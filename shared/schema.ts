@@ -104,7 +104,7 @@ export const messages = pgTable("messages", {
 export const mediaAttachments = pgTable("media_attachments", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
-  messageId: integer("message_id"),  // Will reference messages.id
+  messageId: integer("message_id").notNull(),  // References messages.id
   mediaType: text("media_type").notNull(), // "image", "video", etc.
   mediaPath: text("media_path").notNull(),
   thumbnailPath: text("thumbnail_path"),
