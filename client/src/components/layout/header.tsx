@@ -22,7 +22,7 @@ export function Header() {
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <ScootLogo className="h-8 w-8 text-white" />
-          <span className="text-white font-bold text-xl">Scoot</span>
+          <span className="text-white font-bold text-xl">Scoot(34)</span>
         </Link>
 
         {user ? (
