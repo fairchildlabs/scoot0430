@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { useVersion } from "@/hooks/use-version";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { ScootLogo } from "@/components/logos/scoot-logo";
 
 export default function AuthPage() {
   const { user, loginMutation } = useAuth();
+  const { version } = useVersion();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function AuthPage() {
             <div className="flex justify-center">
               <ScootLogo className="h-12 w-12" />
             </div>
-            <CardTitle className="text-center">Welcome to Scoot(34)</CardTitle>
+            <CardTitle className="text-center">Welcome to {version}</CardTitle>
           </CardHeader>
           <CardContent>
             <Form {...loginForm}>

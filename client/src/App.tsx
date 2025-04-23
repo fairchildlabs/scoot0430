@@ -30,10 +30,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <DatabaseRefreshProvider>
-        <AuthProvider>
-          <Router />
-          <Toaster />
-        </AuthProvider>
+        <VersionProvider>
+          <AuthProvider>
+            <Router />
+            <Toaster />
+          </AuthProvider>
+        </VersionProvider>
       </DatabaseRefreshProvider>
     </QueryClientProvider>
   );
