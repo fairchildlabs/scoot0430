@@ -1,11 +1,36 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Separator } from "@/components/ui/separator";
+import { 
+  Card, 
+  CardContent,
+  CardFooter 
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, PaperclipIcon, X, Send } from "lucide-react";
+import { ImagePlus, Send, X, AlertCircle, FileImage, FileVideo } from "lucide-react";
 import { MessageList } from "./MessageList";
 
 interface Message {
@@ -16,42 +41,49 @@ interface Message {
   createdAt: string;
   hasMedia: boolean;
   isDeleted: boolean;
+  deletedBy?: number;
+  deletedAt?: string;
   media?: {
     id: number;
     mediaType: string;
     mediaPath: string;
     thumbnailPath: string | null;
   };
+  moderatorName?: string;
 }
 
 export function Chat() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const socketRef = useRef<WebSocket | null>(null);
-  const [mediaUpload, setMediaUpload] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadedMediaId, setUploadedMediaId] = useState<number | null>(null);
-  const [uploadedMediaPreview, setUploadedMediaPreview] = useState<string | null>(null);
   const { toast } = useToast();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageInput, setMessageInput] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [mediaUploadOpen, setMediaUploadOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  // Connect to WebSocket when component mounts
+  const socketRef = useRef<WebSocket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Initialize WebSocket connection
   useEffect(() => {
     if (!user) return;
     
+    // Create WebSocket connection
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
     
+    // Connection opened
     socket.addEventListener("open", () => {
       console.log("WebSocket connection established");
       setIsConnected(true);
-      setError(null);
       
       // Authenticate with the server
       socket.send(JSON.stringify({
@@ -61,355 +93,493 @@ export function Chat() {
       }));
     });
     
-    socket.addEventListener("message", (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log("Received message:", data);
-        
-        switch (data.type) {
-          case "recent_messages":
-            setMessages(data.messages);
-            setIsLoading(false);
-            break;
-            
-          case "new_message":
-            setMessages(prevMessages => [data.message, ...prevMessages]);
-            break;
-            
-          case "moderation":
-            if (data.action === "delete") {
-              setMessages(prevMessages => 
-                prevMessages.map(msg => 
-                  msg.id === data.messageId 
-                    ? { ...msg, isDeleted: true, content: null } 
-                    : msg
-                )
-              );
-            } else if (data.action === "restore") {
-              // Refresh messages after restoration
-              fetchMessages();
-            }
-            break;
-            
-          case "error":
-            setError(data.error);
-            toast({
-              title: "Error",
-              description: data.error,
-              variant: "destructive"
-            });
-            break;
-        }
-      } catch (error) {
-        console.error("Error parsing message:", error);
-      }
-    });
+    // Listen for messages
+    socket.addEventListener("message", handleSocketMessage);
     
+    // Connection closed
     socket.addEventListener("close", () => {
       console.log("WebSocket connection closed");
       setIsConnected(false);
-      setError("Connection lost. Please refresh the page.");
+      
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
+          console.log("Attempting to reconnect...");
+          // The useEffect cleanup will remove the old socket
+          // and this effect will run again to create a new one
+        }
+      }, 3000);
     });
     
-    socket.addEventListener("error", () => {
-      console.error("WebSocket error");
-      setError("Connection error. Please try again later.");
+    // Connection error
+    socket.addEventListener("error", (error) => {
+      console.error("WebSocket error:", error);
       setIsConnected(false);
     });
     
+    // Load initial messages
+    fetchMessages();
+    
+    // Clean up on unmount
     return () => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
         socket.close();
       }
     };
   }, [user]);
   
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+  
+  // Reset preview when dialog closes
+  useEffect(() => {
+    if (!mediaUploadOpen) {
+      setSelectedFile(null);
+      setPreview(null);
+      setUploadProgress(0);
+      setErrorMessage(null);
+    }
+  }, [mediaUploadOpen]);
+  
+  // Create URL preview for selected file
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreview(null);
+      return;
+    }
+    
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreview(objectUrl);
+    
+    // Free memory when preview is no longer needed
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedFile]);
+  
+  // Handle incoming socket messages
+  const handleSocketMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.type === "message") {
+        // New message received
+        setMessages(prevMessages => [...prevMessages, data.message]);
+      } else if (data.type === "messages") {
+        // Initial messages load
+        setMessages(data.messages);
+        setIsLoading(false);
+      } else if (data.type === "moderation") {
+        // Message moderation (delete/restore)
+        if (data.action === "delete") {
+          // Update the message as deleted
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === data.messageId 
+                ? { ...msg, isDeleted: true, deletedBy: data.moderatorId, moderatorName: data.moderatorName, deletedAt: data.timestamp } 
+                : msg
+            )
+          );
+        } else if (data.action === "restore") {
+          // Update the message as restored
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === data.messageId 
+                ? { ...msg, isDeleted: false, deletedBy: undefined, moderatorName: undefined, deletedAt: undefined } 
+                : msg
+            )
+          );
+        }
+      } else if (data.type === "error") {
+        // Error from server
+        toast({
+          title: "Error",
+          description: data.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error("Error parsing message:", error);
+    }
+  };
+  
   // Fetch initial messages
   const fetchMessages = async () => {
     try {
       const response = await fetch("/api/chat/messages");
-      if (!response.ok) throw new Error("Failed to fetch messages");
+      if (!response.ok) {
+        throw new Error("Failed to fetch messages");
+      }
+      
       const data = await response.json();
       setMessages(data);
       setIsLoading(false);
     } catch (error) {
       console.error("Error fetching messages:", error);
-      setError("Failed to load messages. Please try again.");
+      toast({
+        title: "Error",
+        description: "Failed to load messages. Please try again.",
+        variant: "destructive"
+      });
       setIsLoading(false);
     }
   };
   
-  // Send message
-  const sendMessage = () => {
+  // Handle message submission
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setError("Not connected to server");
-      return;
-    }
-    
-    if (!inputMessage.trim() && !uploadedMediaId) {
       toast({
-        title: "Cannot send empty message",
-        description: "Please type a message or attach media",
+        title: "Connection Error",
+        description: "Not connected to chat server. Please refresh the page.",
         variant: "destructive"
       });
       return;
     }
     
-    const messageData = {
-      type: "chat_message",
-      content: inputMessage.trim(),
-      hasMedia: !!uploadedMediaId,
-      mediaId: uploadedMediaId
-    };
-    
-    socketRef.current.send(JSON.stringify(messageData));
-    setInputMessage("");
-    setUploadedMediaId(null);
-    setUploadedMediaPreview(null);
-    setMediaUpload(null);
-  };
-  
-  // Upload media
-  const uploadMedia = async (file: File) => {
-    setIsUploading(true);
-    setError(null);
-    
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      
-      const response = await fetch("/api/chat/upload", {
-        method: "POST",
-        body: formData
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Upload failed");
-      }
-      
-      const data = await response.json();
-      setUploadedMediaId(data.id);
-      
-      // Create preview URL
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setUploadedMediaPreview(e.target?.result as string);
-        };
-        reader.readAsDataURL(file);
-      } else if (file.type.startsWith("video/")) {
-        // For video, we'll use the thumbnailPath if available, otherwise just show a placeholder
-        setUploadedMediaPreview(data.thumbnailPath || "/video-placeholder.png");
-      }
-      
+    // Trim message and check if it's empty
+    const trimmedMessage = messageInput.trim();
+    if (!trimmedMessage) {
       toast({
-        title: "Media uploaded",
-        description: "Your media is ready to send"
-      });
-    } catch (error) {
-      console.error("Error uploading media:", error);
-      setError(`Failed to upload media: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload media",
+        title: "Error",
+        description: "Please enter a message.",
         variant: "destructive"
       });
-    } finally {
-      setIsUploading(false);
+      return;
+    }
+    
+    // Send message to server
+    socketRef.current.send(JSON.stringify({
+      type: "message",
+      content: trimmedMessage
+    }));
+    
+    // Clear input
+    setMessageInput("");
+  };
+  
+  // Open file picker
+  const handleOpenFilePicker = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
   
-  // Handle media file change
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
     // Check file type
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-      toast({
-        title: "Unsupported file type",
-        description: "Please upload an image or video file",
-        variant: "destructive"
-      });
+    const fileType = file.type.split('/')[0];
+    if (fileType !== 'image' && fileType !== 'video') {
+      setErrorMessage("Only image and video files are supported.");
       return;
     }
     
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
+      setErrorMessage("File size exceeds the 10MB limit.");
+      return;
+    }
+    
+    setSelectedFile(file);
+    setErrorMessage(null);
+    setMediaUploadOpen(true);
+  };
+  
+  // Upload selected file
+  const handleUploadFile = async () => {
+    if (!selectedFile) return;
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      
+      const xhr = new XMLHttpRequest();
+      
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(progress);
+        }
+      });
+      
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const response = JSON.parse(xhr.responseText);
+          
+          // Send message with media to server
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+              type: "media_message",
+              mediaId: response.mediaId
+            }));
+          }
+          
+          // Close dialog and reset
+          setMediaUploadOpen(false);
+          setSelectedFile(null);
+          setPreview(null);
+          setUploadProgress(0);
+          
+          toast({
+            title: "Success",
+            description: "Media uploaded successfully.",
+          });
+        } else {
+          throw new Error(xhr.statusText);
+        }
+      });
+      
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        throw new Error('Network error occurred during upload');
+      });
+      
+      // Send request
+      xhr.open('POST', '/api/chat/upload');
+      xhr.send(formData);
+      
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      setErrorMessage("Failed to upload file. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
+  // Handle message moderation
+  const handleModerateMessage = (messageId: number, action: string) => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
       toast({
-        title: "File too large",
-        description: "Please upload a file smaller than 10MB",
+        title: "Connection Error",
+        description: "Not connected to chat server. Please refresh the page.",
         variant: "destructive"
       });
       return;
     }
     
-    setMediaUpload(file);
-    uploadMedia(file);
-  };
-  
-  // Handle media removal before sending
-  const handleRemoveMedia = () => {
-    setUploadedMediaId(null);
-    setUploadedMediaPreview(null);
-    setMediaUpload(null);
-  };
-  
-  // Handle message moderation (for engineers and root users)
-  const handleModerateMessage = (messageId: number, action: string) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setError("Not connected to server");
-      return;
-    }
-    
+    // Send moderation command to server
     socketRef.current.send(JSON.stringify({
-      type: "moderate",
-      messageId,
-      action,
-      notes: `Moderated by ${user?.username}`
-    }));
-  };
-  
-  // Handle message restoration (root users only)
-  const handleRestoreMessage = (messageId: number) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setError("Not connected to server");
-      return;
-    }
-    
-    socketRef.current.send(JSON.stringify({
-      type: "restore",
+      type: action,
       messageId
     }));
   };
   
-  // If not authenticated, show a message
+  // Handle message restoration
+  const handleRestoreMessage = (messageId: number) => {
+    handleModerateMessage(messageId, "restore");
+  };
+  
+  // Render connection status
+  const renderConnectionStatus = () => {
+    if (!user) return null;
+    
+    return (
+      <div className={`flex items-center space-x-1 text-xs ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
+        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+        <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+      </div>
+    );
+  };
+  
+  // Render preview based on file type
+  const renderPreview = () => {
+    if (!preview || !selectedFile) return null;
+    
+    const fileType = selectedFile.type.split('/')[0];
+    
+    return (
+      <div className="relative mt-4 max-w-lg mx-auto">
+        {fileType === 'image' && (
+          <img 
+            src={preview} 
+            alt="Upload preview" 
+            className="max-h-96 max-w-full mx-auto rounded-md"
+          />
+        )}
+        {fileType === 'video' && (
+          <video 
+            src={preview} 
+            controls
+            className="max-h-96 max-w-full mx-auto rounded-md"
+          />
+        )}
+      </div>
+    );
+  };
+  
   if (!user) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <h2 className="text-2xl font-semibold mb-4">Chat Access Restricted</h2>
-        <p className="text-muted-foreground">Please log in to use the chat</p>
+      <div className="flex justify-center items-center h-64">
+        <p className="text-gray-400">Please log in to view the chat.</p>
       </div>
     );
   }
   
   return (
-    <div className="flex flex-col h-[80vh] mx-auto max-w-3xl border border-border rounded-md bg-black">
-      {/* Connection status */}
-      {!isConnected && (
-        <Alert variant="destructive" className="m-2">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Connection Error</AlertTitle>
-          <AlertDescription>
-            {error || "Not connected to chat server. Please refresh the page."}
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {/* Main chat container */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="p-4 bg-gray-900">
-          <h2 className="text-xl font-bold">Scoot(1995) Chat</h2>
-          <p className="text-sm text-gray-400">
-            {isConnected 
-              ? "Connected to server" 
-              : "Connecting to server..."}
-          </p>
-        </div>
-        
-        <Separator />
-        
-        {/* Message list */}
-        <div className="flex-1 overflow-y-auto p-4 bg-black">
-          {isLoading ? (
-            <div className="flex justify-center items-center h-full">
-              <p>Loading messages...</p>
-            </div>
-          ) : messages.length > 0 ? (
-            <MessageList 
-              messages={messages} 
-              currentUser={user}
-              onModerate={handleModerateMessage}
-              onRestore={handleRestoreMessage}
-            />
-          ) : (
-            <div className="flex justify-center items-center h-full">
-              <p className="text-gray-400">No messages yet. Start the conversation!</p>
-            </div>
-          )}
-        </div>
-        
-        <Separator />
-        
-        {/* Media preview */}
-        {uploadedMediaPreview && (
-          <div className="p-2 bg-gray-900 flex items-center">
-            <div className="w-16 h-16 mr-2 relative">
-              <img 
-                src={uploadedMediaPreview} 
-                alt="Upload preview" 
-                className="w-full h-full object-cover rounded-md"
-              />
-              <button 
-                onClick={handleRemoveMedia}
-                className="absolute -top-2 -right-2 bg-black text-white rounded-full w-5 h-5 flex items-center justify-center"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            <p className="text-sm text-gray-400">Media ready to send</p>
+    <Card className="bg-gray-900 border-gray-800 shadow-lg">
+      <CardContent className="p-0">
+        <div className="flex flex-col h-[70vh]">
+          <div className="p-4 flex justify-between items-center border-b border-gray-800">
+            <h2 className="text-lg font-semibold">Community Chat</h2>
+            {renderConnectionStatus()}
           </div>
-        )}
-        
-        {/* Message input */}
-        <div className="p-4 bg-gray-900">
-          <div className="flex">
-            <Textarea
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 mr-2 resize-none bg-black"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
-            <div className="flex flex-col space-y-2">
-              <label className="cursor-pointer">
-                <Button 
-                  variant="outline"
-                  size="icon"
-                  disabled={isUploading}
-                  className="relative"
-                  type="button"
-                >
-                  {isUploading ? (
-                    <span className="animate-pulse">⏳</span>
-                  ) : (
-                    <PaperclipIcon className="h-4 w-4" />
+          
+          <ScrollArea className="flex-1 p-4">
+            {isLoading ? (
+              <div className="flex justify-center items-center h-full">
+                <p className="text-gray-400">Loading messages...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <MessageList 
+                  messages={messages} 
+                  currentUser={user}
+                  onModerate={handleModerateMessage}
+                  onRestore={handleRestoreMessage}
+                />
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </ScrollArea>
+          
+          <CardFooter className="p-4 border-t border-gray-800">
+            <form onSubmit={handleSubmit} className="flex items-end gap-2 w-full">
+              <Dialog open={mediaUploadOpen} onOpenChange={setMediaUploadOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={!isConnected}
+                    className="h-10 w-10"
+                    onClick={handleOpenFilePicker}
+                  >
+                    <ImagePlus className="h-5 w-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-gray-900 border-gray-800">
+                  <DialogHeader>
+                    <DialogTitle>Upload Media</DialogTitle>
+                  </DialogHeader>
+                  
+                  {errorMessage && (
+                    <div className="bg-red-900/30 border border-red-800 text-red-400 p-3 rounded-md flex items-start space-x-2">
+                      <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                      <p>{errorMessage}</p>
+                    </div>
                   )}
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={handleFileChange}
-                    className="sr-only"
-                    disabled={isUploading || !!uploadedMediaId}
-                  />
-                </Button>
-              </label>
-              <Button
-                onClick={sendMessage}
-                disabled={(!inputMessage.trim() && !uploadedMediaId) || !isConnected}
+                  
+                  {!selectedFile ? (
+                    <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-700 rounded-md">
+                      <div className="flex flex-col items-center text-center space-y-2">
+                        <div className="flex space-x-4">
+                          <FileImage className="h-8 w-8 text-gray-400" />
+                          <FileVideo className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-medium">No file selected</h3>
+                        <p className="text-sm text-gray-400">
+                          Click 'Browse' to select an image or video (max 10MB)
+                        </p>
+                        <Button 
+                          onClick={handleOpenFilePicker}
+                          variant="secondary"
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {renderPreview()}
+                      
+                      {isUploading && (
+                        <div className="mt-4">
+                          <div className="w-full bg-gray-700 rounded-full h-2.5 mb-1">
+                            <div 
+                              className="bg-blue-600 h-2.5 rounded-full" 
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-gray-400 text-right">
+                            {uploadProgress}%
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-center mt-4">
+                        <div className="text-sm text-gray-400 truncate max-w-[70%]">
+                          {selectedFile.name}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-400"
+                          onClick={() => setSelectedFile(null)}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                  
+                  <DialogFooter>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setMediaUploadOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleUploadFile}
+                      disabled={!selectedFile || isUploading}
+                    >
+                      Upload
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept="image/*,video/*"
+                onChange={handleFileSelected}
+              />
+              
+              <div className="flex-1">
+                <Textarea
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  placeholder="Type a message..."
+                  className="min-h-[44px] max-h-[120px] resize-none"
+                  disabled={!isConnected}
+                />
+              </div>
+              
+              <Button 
+                type="submit" 
+                disabled={!isConnected || !messageInput.trim()}
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 mr-1" />
+                Send
               </Button>
-            </div>
-          </div>
+            </form>
+          </CardFooter>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

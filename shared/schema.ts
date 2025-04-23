@@ -94,6 +94,7 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   clubIndex: integer("club_index").notNull().default(1995), // Scoot(1995)
   hasMedia: boolean("has_media").default(false).notNull(),
+  mediaId: integer("media_id").references(() => mediaAttachments.id),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   deletedBy: integer("deleted_by").references(() => users.id),
   deletedAt: timestamp("deleted_at"),
@@ -102,7 +103,8 @@ export const messages = pgTable("messages", {
 // Media attachments for chat messages
 export const mediaAttachments = pgTable("media_attachments", {
   id: serial("id").primaryKey(),
-  messageId: integer("message_id").notNull().references(() => messages.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  messageId: integer("message_id").references(() => messages.id),
   mediaType: text("media_type").notNull(), // "image", "video", etc.
   mediaPath: text("media_path").notNull(),
   thumbnailPath: text("thumbnail_path"),
