@@ -1,164 +1,346 @@
-import { Request, Response } from "express";
-import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { WebSocketServer, WebSocket } from 'ws';
+import { Request, Response } from 'express';
+import fileUpload from 'express-fileupload';
+import path from 'path';
+import fs from 'fs';
+import { promisify } from 'util';
+import { db } from './db';
 import { 
   messages, 
   mediaAttachments, 
   moderationLogs, 
-  users,
-  insertMessageSchema,
-  insertMediaAttachmentSchema,
-  insertModerationLogSchema
-} from "@shared/schema";
-import path from "path";
-import fs from "fs";
-import { promisify } from "util";
-import crypto from "crypto";
-import { WebSocket, WebSocketServer } from "ws";
-import fileUpload from "express-fileupload";
+  insertMessageSchema, 
+  insertMediaAttachmentSchema, 
+  insertModerationLogSchema,
+  users
+} from '@shared/schema';
+import { eq, and, desc, sql, asc } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
+import { User } from '@shared/schema';
 
-// Define Request with file upload type
+const mkdirAsync = promisify(fs.mkdir);
+const writeFileAsync = promisify(fs.writeFile);
+const renameAsync = promisify(fs.rename);
+const statAsync = promisify(fs.stat);
+const unlinkAsync = promisify(fs.unlink);
+
 interface FileUploadRequest extends Request {
   files?: fileUpload.FileArray;
 }
 
-// For file uploads
-const mkdir = promisify(fs.mkdir);
-const writeFile = promisify(fs.writeFile);
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
-
-// Ensure upload directory exists
+// Make sure the uploads directory exists
 async function ensureUploadDirExists() {
+  const uploadsDir = path.join(process.cwd(), 'uploads');
   try {
-    await mkdir(UPLOAD_DIR, { recursive: true });
+    await statAsync(uploadsDir);
   } catch (error) {
-    console.error('Failed to create upload directory:', error);
+    // If the directory doesn't exist, create it
+    await mkdirAsync(uploadsDir, { recursive: true });
   }
+  return uploadsDir;
 }
 
-// Initialize upload directory
-ensureUploadDirExists();
-
-// Connected WebSocket clients
+// Define connected clients
 type Client = {
   socket: WebSocket;
   userId: number;
   isAdmin: boolean;
 };
 
-const clients: Client[] = [];
+// Initialize connected clients map
+const clients = new Map<WebSocket, Client>();
 
+// Set up WebSocket server for chat
 export function setupChatWebSocket(wss: WebSocketServer) {
-  wss.on('connection', (ws, req) => {
-    console.log('WebSocket connection established');
+  console.log('Setting up chat WebSocket server...');
+  
+  wss.on('connection', (socket) => {
+    console.log('Client connected to chat WebSocket');
     
-    // The user ID will be sent in the first message
-    let clientInfo: Client | null = null;
-    
-    ws.on('message', async (message) => {
+    socket.on('message', async (message) => {
       try {
-        // Parse incoming message
         const data = JSON.parse(message.toString());
+        console.log('Received WebSocket message:', data.type);
         
-        // Handle authentication message
+        // Handle authentication
         if (data.type === 'auth') {
-          // In a production app, verify the token here
-          const userId = parseInt(data.userId);
-          const isAdmin = data.isAdmin === true;
+          const { userId, isAdmin } = data;
           
-          clientInfo = { socket: ws, userId, isAdmin };
-          clients.push(clientInfo);
+          if (!userId) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Authentication failed: Missing user ID'
+            }));
+            return;
+          }
           
-          console.log(`Client authenticated: userId=${userId}, isAdmin=${isAdmin}`);
+          // Store client information
+          clients.set(socket, { socket, userId, isAdmin: !!isAdmin });
           
-          // Send recent messages to the newly connected client
+          // Send recent messages to the new user
           const recentMessages = await getRecentMessages();
-          ws.send(JSON.stringify({
-            type: 'recent_messages',
+          socket.send(JSON.stringify({
+            type: 'messages',
             messages: recentMessages
           }));
           
+          console.log(`User ${userId} authenticated with WebSocket${isAdmin ? ' (admin)' : ''}`);
           return;
         }
         
-        // Ensure client is authenticated for all other message types
-        if (!clientInfo) {
-          ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated' }));
+        // Get client info
+        const client = clients.get(socket);
+        if (!client) {
+          socket.send(JSON.stringify({
+            type: 'error',
+            error: 'Not authenticated'
+          }));
           return;
         }
         
-        // Handle other message types
-        switch (data.type) {
-          case 'chat_message':
-            // Process and broadcast chat message
-            if (data.content || (data.hasMedia && data.mediaId)) {
-              const newMessage = await createMessage({
-                userId: clientInfo.userId,
-                content: data.content,
-                hasMedia: data.hasMedia || false,
-                mediaId: data.mediaId
-              });
-              
-              broadcastMessage(newMessage);
+        // Handle text message
+        if (data.type === 'message') {
+          const { content } = data;
+          if (!content || content.trim() === '') {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message content cannot be empty'
+            }));
+            return;
+          }
+          
+          // Create message in database
+          const newMessage = await createMessage({ 
+            userId: client.userId, 
+            content: content.trim() 
+          });
+          
+          // Get the user's username for the message
+          const user = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, client.userId))
+            .then(rows => rows[0]);
+          
+          if (!user) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'User not found'
+            }));
+            return;
+          }
+          
+          // Broadcast message to all clients
+          broadcastMessage({
+            type: 'message',
+            message: {
+              ...newMessage,
+              username: user.username
             }
-            break;
-            
-          case 'moderate':
-            if (!clientInfo.isAdmin) {
-              ws.send(JSON.stringify({ type: 'error', error: 'Unauthorized' }));
-              return;
-            }
-            
-            if (data.action === 'delete' && data.messageId) {
-              const result = await moderateMessage(data.messageId, clientInfo.userId, data.action, data.notes);
-              if (result.success) {
-                broadcastModeration(data.messageId, data.action);
-              } else {
-                ws.send(JSON.stringify({ type: 'error', error: result.error }));
-              }
-            }
-            break;
-            
-          case 'restore':
-            if (!isRootUser(clientInfo.userId)) {
-              ws.send(JSON.stringify({ type: 'error', error: 'Unauthorized' }));
-              return;
-            }
-            
-            if (data.messageId) {
-              const result = await restoreMessage(data.messageId, clientInfo.userId);
-              if (result.success) {
-                broadcastModeration(data.messageId, 'restore');
-              } else {
-                ws.send(JSON.stringify({ type: 'error', error: result.error }));
-              }
-            }
-            break;
-            
-          default:
-            ws.send(JSON.stringify({ type: 'error', error: 'Unknown message type' }));
+          });
         }
+        
+        // Handle media message
+        else if (data.type === 'media_message') {
+          const { mediaId } = data;
+          if (!mediaId) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Media ID is required'
+            }));
+            return;
+          }
+          
+          // Get the media attachment
+          const [media] = await db
+            .select()
+            .from(mediaAttachments)
+            .where(eq(mediaAttachments.id, mediaId));
+          
+          if (!media) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Media not found'
+            }));
+            return;
+          }
+          
+          // Create a message with the media
+          const newMessage = await createMessage({ 
+            userId: client.userId, 
+            content: null,
+            hasMedia: true,
+            mediaId: mediaId 
+          });
+          
+          // Get the user's username for the message
+          const user = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, client.userId))
+            .then(rows => rows[0]);
+          
+          if (!user) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'User not found'
+            }));
+            return;
+          }
+          
+          // Broadcast message to all clients
+          broadcastMessage({
+            type: 'message',
+            message: {
+              ...newMessage,
+              username: user.username,
+              media: media
+            }
+          });
+        }
+        
+        // Handle message deletion
+        else if (data.type === 'delete') {
+          const { messageId } = data;
+          if (!messageId) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message ID is required for deletion'
+            }));
+            return;
+          }
+          
+          // Check if user is an admin
+          if (!client.isAdmin) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Only moderators can delete messages'
+            }));
+            return;
+          }
+          
+          // Get the message
+          const [message] = await db
+            .select()
+            .from(messages)
+            .where(eq(messages.id, messageId));
+          
+          if (!message) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message not found'
+            }));
+            return;
+          }
+          
+          if (message.isDeleted) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message is already deleted'
+            }));
+            return;
+          }
+          
+          // Delete the message
+          await moderateMessage(messageId, client.userId);
+          
+          // Get moderator's username
+          const moderator = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, client.userId))
+            .then(rows => rows[0]);
+          
+          // Broadcast deletion to all clients
+          broadcastModeration(messageId, 'delete');
+          
+          // Send confirmation to the client
+          socket.send(JSON.stringify({
+            type: 'success',
+            action: 'delete',
+            messageId
+          }));
+        }
+        
+        // Handle message restoration
+        else if (data.type === 'restore') {
+          const { messageId } = data;
+          if (!messageId) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message ID is required for restoration'
+            }));
+            return;
+          }
+          
+          // Check if user is a root (only roots can restore)
+          const isRoot = await isRootUser(client.userId);
+          if (!isRoot) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Only root users can restore messages'
+            }));
+            return;
+          }
+          
+          // Get the message
+          const [message] = await db
+            .select()
+            .from(messages)
+            .where(eq(messages.id, messageId));
+          
+          if (!message) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message not found'
+            }));
+            return;
+          }
+          
+          if (!message.isDeleted) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message is not deleted'
+            }));
+            return;
+          }
+          
+          // Restore the message
+          await restoreMessage(messageId, client.userId);
+          
+          // Broadcast restoration to all clients
+          broadcastModeration(messageId, 'restore');
+          
+          // Send confirmation to the client
+          socket.send(JSON.stringify({
+            type: 'success',
+            action: 'restore',
+            messageId
+          }));
+        }
+        
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
-        ws.send(JSON.stringify({ type: 'error', error: 'Invalid message format' }));
+        socket.send(JSON.stringify({
+          type: 'error',
+          error: 'Internal server error'
+        }));
       }
     });
     
-    ws.on('close', () => {
-      if (clientInfo) {
-        const index = clients.findIndex(c => c.socket === ws);
-        if (index >= 0) {
-          clients.splice(index, 1);
-        }
-      }
-      console.log('WebSocket connection closed');
+    // Handle disconnection
+    socket.on('close', () => {
+      console.log('Client disconnected from chat WebSocket');
+      // Remove client from map
+      clients.delete(socket);
     });
   });
 }
 
-// Check if user is a root user
+// Check if a user is a root user
 async function isRootUser(userId: number): Promise<boolean> {
-  const [user] = await db.select({ isRoot: users.isRoot })
+  const [user] = await db
+    .select({ isRoot: users.isRoot })
     .from(users)
     .where(eq(users.id, userId));
   
@@ -167,381 +349,358 @@ async function isRootUser(userId: number): Promise<boolean> {
 
 // Broadcast a message to all connected clients
 function broadcastMessage(message: any) {
-  const payload = JSON.stringify({
-    type: 'new_message',
-    message
-  });
+  const messageStr = JSON.stringify(message);
   
-  clients.forEach(client => {
-    if (client.socket.readyState === WebSocket.OPEN) {
-      client.socket.send(payload);
+  for (const [socket, client] of clients.entries()) {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(messageStr);
     }
-  });
+  }
 }
 
 // Broadcast a moderation action to all connected clients
 function broadcastModeration(messageId: number, action: string) {
-  const payload = JSON.stringify({
-    type: 'moderation',
-    messageId,
-    action
-  });
+  const now = new Date().toISOString();
   
-  clients.forEach(client => {
-    if (client.socket.readyState === WebSocket.OPEN) {
-      client.socket.send(payload);
+  for (const [socket, client] of clients.entries()) {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'moderation',
+        action: action,
+        messageId: messageId,
+        timestamp: now,
+        moderatorId: client.userId,
+        moderatorName: '' // Will be filled by the client
+      }));
     }
-  });
+  }
 }
-
-// API Routes
 
 // Get recent messages
 export async function getRecentMessages(limit = 50) {
-  const messagesWithUsers = await db
-    .select({
-      id: messages.id,
-      content: messages.content,
-      userId: messages.userId,
-      username: users.username,
-      createdAt: messages.createdAt,
-      hasMedia: messages.hasMedia,
-      isDeleted: messages.isDeleted,
-      deletedBy: messages.deletedBy,
-      deletedAt: messages.deletedAt
-    })
-    .from(messages)
-    .leftJoin(users, eq(messages.userId, users.id))
-    .where(eq(messages.clubIndex, 1995))
-    .orderBy(desc(messages.createdAt))
-    .limit(limit);
-  
-  // For messages with media, fetch the media attachments
-  const messagesWithMedia = await Promise.all(
-    messagesWithUsers.map(async (message) => {
-      if (message.hasMedia) {
-        const media = await db
-          .select()
-          .from(mediaAttachments)
-          .where(eq(mediaAttachments.messageId, message.id));
+  try {
+    // Get messages
+    const rawMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.clubIndex, 1995))
+      .orderBy(asc(messages.createdAt))
+      .limit(limit);
+    
+    // Get user information for each message
+    const messagesWithUserInfo = await Promise.all(
+      rawMessages.map(async (message) => {
+        // Get the username for the message
+        const [user] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, message.userId));
         
-        return { ...message, media: media[0] || null };
-      }
-      return message;
-    })
-  );
-  
-  return messagesWithMedia;
+        // Get media information if the message has media
+        let media = null;
+        if (message.hasMedia && message.mediaId) {
+          const [mediaInfo] = await db
+            .select()
+            .from(mediaAttachments)
+            .where(eq(mediaAttachments.id, message.mediaId));
+          
+          if (mediaInfo) {
+            media = mediaInfo;
+          }
+        }
+        
+        // Get moderator name if the message is deleted
+        let moderatorName = null;
+        if (message.isDeleted && message.deletedBy) {
+          const [moderator] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, message.deletedBy));
+          
+          if (moderator) {
+            moderatorName = moderator.username;
+          }
+        }
+        
+        return {
+          ...message,
+          username: user?.username || 'Unknown User',
+          moderatorName,
+          media
+        };
+      })
+    );
+    
+    return messagesWithUserInfo;
+  } catch (error) {
+    console.error('Error getting recent messages:', error);
+    throw error;
+  }
 }
 
 // Create a new message
 export async function createMessage({ userId, content, hasMedia = false, mediaId = null }: { userId: number; content: string | null; hasMedia?: boolean; mediaId?: number | null; }) {
-  const [message] = await db
-    .insert(messages)
-    .values({
-      userId,
-      content,
-      hasMedia,
-      clubIndex: 1995
-    })
-    .returning();
-  
-  // If this message references a previously uploaded media, update it
-  if (hasMedia && mediaId) {
-    await db
-      .update(mediaAttachments)
-      .set({ messageId: message.id })
-      .where(eq(mediaAttachments.id, mediaId));
+  try {
+    // Insert the message
+    const [newMessage] = await db
+      .insert(messages)
+      .values({
+        userId,
+        content,
+        clubIndex: 1995, // Hard-coded to Scoot(1995)
+        hasMedia,
+        mediaId,
+        createdAt: new Date().toISOString(),
+        isDeleted: false
+      })
+      .returning();
+    
+    return newMessage;
+  } catch (error) {
+    console.error('Error creating message:', error);
+    throw error;
   }
-  
-  // Get the username
-  const [user] = await db
-    .select({ username: users.username })
-    .from(users)
-    .where(eq(users.id, userId));
-  
-  return { ...message, username: user.username };
 }
 
-// Upload media file
+// Upload media
 export async function uploadMedia(req: FileUploadRequest, res: Response) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (!req.files || Object.keys(req.files).length === 0) {
+    return res.status(400).json({ error: 'No files were uploaded' });
+  }
+  
   try {
-    if (!req.files || Object.keys(req.files).length === 0) {
-      return res.status(400).json({ error: 'No files were uploaded' });
-    }
+    // Make sure uploads directory exists
+    const uploadsDir = await ensureUploadDirExists();
     
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    
+    // Get the file
     const file = req.files.file as fileUpload.UploadedFile;
-    const mediaType = file.mimetype.startsWith('image/') ? 'image' : 
-                     file.mimetype.startsWith('video/') ? 'video' : 'unknown';
     
-    if (mediaType === 'unknown') {
-      return res.status(400).json({ error: 'Unsupported file type' });
+    // Check file type
+    const fileType = file.mimetype.split('/')[0];
+    if (fileType !== 'image' && fileType !== 'video') {
+      return res.status(400).json({ 
+        error: 'Unsupported file type. Only images and videos are allowed.' 
+      });
+    }
+    
+    // Check file size (10MB limit)
+    if (file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ 
+        error: 'File size exceeds the limit (10MB)' 
+      });
     }
     
     // Generate a unique filename
     const fileExt = path.extname(file.name);
-    const uniqueFilename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${fileExt}`;
-    const filePath = path.join(UPLOAD_DIR, uniqueFilename);
+    const uniqueFileName = `${uuidv4()}${fileExt}`;
+    const filePath = path.join(uploadsDir, uniqueFileName);
     
-    // Move the file to the upload directory
+    // Move the file to the uploads directory
     await file.mv(filePath);
     
-    // Create a thumbnail for video files (simplified - in a real app, use ffmpeg)
+    // Create a thumbnail for videos (use placeholder for now)
     let thumbnailPath = null;
-    if (mediaType === 'video') {
-      // In a real implementation, generate a thumbnail using ffmpeg
-      // For now, we'll just use a placeholder
-      thumbnailPath = uniqueFilename.replace(fileExt, '-thumb.jpg');
+    if (fileType === 'video') {
+      thumbnailPath = '/video-placeholder.png';
     }
     
-    // Create a media attachment record (initially without a message ID)
+    // Save media information to database
     const [media] = await db
       .insert(mediaAttachments)
       .values({
-        messageId: 0, // Temporary value, will be updated when the message is created
-        mediaType,
-        mediaPath: `/uploads/${uniqueFilename}`,
-        thumbnailPath: thumbnailPath ? `/uploads/${thumbnailPath}` : null
+        userId: req.user!.id,
+        mediaType: fileType,
+        mediaPath: `/uploads/${uniqueFileName}`,
+        thumbnailPath,
+        createdAt: new Date().toISOString()
       })
       .returning();
     
-    return res.status(200).json({
-      id: media.id,
-      mediaType,
-      mediaPath: `/uploads/${uniqueFilename}`,
-      thumbnailPath: thumbnailPath ? `/uploads/${thumbnailPath}` : null
+    res.json({ 
+      mediaId: media.id,
+      mediaPath: media.mediaPath
     });
   } catch (error) {
     console.error('Error uploading media:', error);
-    return res.status(500).json({ error: 'Failed to upload media' });
+    res.status(500).json({ error: 'Failed to upload media' });
   }
 }
 
-// Get messages by ID (for retrieving a specific message)
+// Get a specific message by ID
 export async function getMessageById(req: Request, res: Response) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
   try {
-    const { id } = req.params;
-    const messageId = parseInt(id);
+    const messageId = parseInt(req.params.id);
     
+    // Get the message
     const [message] = await db
-      .select({
-        id: messages.id,
-        content: messages.content,
-        userId: messages.userId,
-        username: users.username,
-        createdAt: messages.createdAt,
-        hasMedia: messages.hasMedia,
-        isDeleted: messages.isDeleted,
-        deletedBy: messages.deletedBy,
-        deletedAt: messages.deletedAt
-      })
+      .select()
       .from(messages)
-      .leftJoin(users, eq(messages.userId, users.id))
       .where(eq(messages.id, messageId));
     
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
     }
     
-    // If message has media, get the media details
-    if (message.hasMedia) {
-      const [media] = await db
-        .select()
-        .from(mediaAttachments)
-        .where(eq(mediaAttachments.messageId, messageId));
-      
-      if (media) {
-        return res.json({ ...message, media });
-      }
+    // If message is deleted and user isn't root, don't show content
+    if (message.isDeleted && !req.user!.isRoot) {
+      return res.json({
+        ...message,
+        content: null
+      });
     }
     
-    return res.json(message);
+    // Get username for the message
+    const [user] = await db
+      .select({ username: users.username })
+      .from(users)
+      .where(eq(users.id, message.userId));
+    
+    res.json({
+      ...message,
+      username: user?.username || 'Unknown User'
+    });
   } catch (error) {
     console.error('Error getting message:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 }
 
-// Get media by message ID
+// Get media for a message
 export async function getMediaByMessageId(req: Request, res: Response) {
-  try {
-    const { id } = req.params;
-    const messageId = parseInt(id);
-    
-    const [media] = await db
-      .select()
-      .from(mediaAttachments)
-      .where(eq(mediaAttachments.messageId, messageId));
-    
-    if (!media) {
-      return res.status(404).json({ error: 'Media not found' });
-    }
-    
-    return res.json(media);
-  } catch (error) {
-    console.error('Error getting media:', error);
-    return res.status(500).json({ error: 'Server error' });
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-}
-
-// Moderate a message (delete)
-export async function moderateMessage(
-  messageId: number, 
-  userId: number, 
-  action: string,
-  notes?: string
-): Promise<{ success: boolean, error?: string }> {
+  
   try {
-    // Check if user is an engineer or root
-    const [user] = await db
-      .select({
-        isEngineer: users.isEngineer,
-        isRoot: users.isRoot
-      })
-      .from(users)
-      .where(eq(users.id, userId));
+    const messageId = parseInt(req.params.id);
     
-    if (!user || (!user.isEngineer && !user.isRoot)) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    
-    // Check if the message exists
+    // Get the message
     const [message] = await db
       .select()
       .from(messages)
       .where(eq(messages.id, messageId));
     
     if (!message) {
-      return { success: false, error: 'Message not found' };
+      return res.status(404).json({ error: 'Message not found' });
     }
     
-    // Soft delete the message
-    if (action === 'delete') {
-      await db
-        .update(messages)
-        .set({
-          isDeleted: true,
-          deletedBy: userId,
-          deletedAt: new Date()
-        })
-        .where(eq(messages.id, messageId));
-      
-      // Log the moderation action
-      await db
-        .insert(moderationLogs)
-        .values({
-          messageId,
-          userId,
-          action,
-          notes
-        });
-      
-      return { success: true };
+    if (!message.hasMedia || !message.mediaId) {
+      return res.status(404).json({ error: 'Message has no media' });
     }
     
-    return { success: false, error: 'Invalid action' };
+    // Get the media
+    const [media] = await db
+      .select()
+      .from(mediaAttachments)
+      .where(eq(mediaAttachments.id, message.mediaId));
+    
+    if (!media) {
+      return res.status(404).json({ error: 'Media not found' });
+    }
+    
+    res.json(media);
   } catch (error) {
-    console.error('Error moderating message:', error);
-    return { success: false, error: 'Server error' };
+    console.error('Error getting media:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 }
 
-// Restore a deleted message (root users only)
+// Moderate (delete) a message
+export async function moderateMessage(
+  messageId: number,
+  moderatorId: number
+) {
+  try {
+    // Update the message
+    const [updatedMessage] = await db
+      .update(messages)
+      .set({
+        isDeleted: true,
+        deletedBy: moderatorId,
+        deletedAt: new Date().toISOString()
+      })
+      .where(eq(messages.id, messageId))
+      .returning();
+    
+    // Log the moderation action
+    await db
+      .insert(moderationLogs)
+      .values({
+        messageId,
+        moderatorId,
+        action: 'delete',
+        createdAt: new Date().toISOString()
+      });
+    
+    return updatedMessage;
+  } catch (error) {
+    console.error('Error moderating message:', error);
+    throw error;
+  }
+}
+
+// Restore a deleted message
 export async function restoreMessage(
   messageId: number,
-  userId: number
-): Promise<{ success: boolean, error?: string }> {
+  moderatorId: number
+) {
   try {
-    // Check if user is a root user
-    const [user] = await db
-      .select({ isRoot: users.isRoot })
-      .from(users)
-      .where(eq(users.id, userId));
-    
-    if (!user || !user.isRoot) {
-      return { success: false, error: 'Unauthorized - Root access required' };
-    }
-    
-    // Check if the message exists and is deleted
-    const [message] = await db
-      .select()
-      .from(messages)
-      .where(and(
-        eq(messages.id, messageId),
-        eq(messages.isDeleted, true)
-      ));
-    
-    if (!message) {
-      return { success: false, error: 'Message not found or not deleted' };
-    }
-    
-    // Restore the message
-    await db
+    // Update the message
+    const [updatedMessage] = await db
       .update(messages)
       .set({
         isDeleted: false,
         deletedBy: null,
         deletedAt: null
       })
-      .where(eq(messages.id, messageId));
+      .where(eq(messages.id, messageId))
+      .returning();
     
-    // Log the restoration
+    // Log the moderation action
     await db
       .insert(moderationLogs)
       .values({
         messageId,
-        userId,
-        action: 'restore'
+        moderatorId,
+        action: 'restore',
+        createdAt: new Date().toISOString()
       });
     
-    return { success: true };
+    return updatedMessage;
   } catch (error) {
     console.error('Error restoring message:', error);
-    return { success: false, error: 'Server error' };
+    throw error;
   }
 }
 
-// Get deleted messages (for root users only)
+// Get deleted messages (for root users)
 export async function getDeletedMessages(req: Request, res: Response) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (!req.user!.isRoot) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  
   try {
-    // Check if user is a root user
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    
-    const [user] = await db
-      .select({ isRoot: users.isRoot })
-      .from(users)
-      .where(eq(users.id, userId));
-    
-    if (!user || !user.isRoot) {
-      return res.status(403).json({ error: 'Unauthorized - Root access required' });
-    }
-    
-    const page = parseInt(req.query.page?.toString() || '1');
-    const limit = parseInt(req.query.limit?.toString() || '50');
+    // Get pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
     
-    // Get deleted messages with author and moderator info
+    // Get deleted messages
     const deletedMessages = await db
-      .select({
-        id: messages.id,
-        content: messages.content,
-        createdAt: messages.createdAt,
-        authorId: messages.userId,
-        authorName: users.username,
-        deletedBy: messages.deletedBy,
-        deletedAt: messages.deletedAt,
-        hasMedia: messages.hasMedia
-      })
+      .select()
       .from(messages)
-      .leftJoin(users, eq(messages.userId, users.id))
       .where(and(
         eq(messages.isDeleted, true),
         eq(messages.clubIndex, 1995)
@@ -550,40 +709,70 @@ export async function getDeletedMessages(req: Request, res: Response) {
       .limit(limit)
       .offset(offset);
     
-    // For each deleted message, get the moderator name
+    // Get additional information for each message
     const messagesWithModeratorInfo = await Promise.all(
       deletedMessages.map(async (message) => {
-        if (message.deletedBy) {
-          const [moderator] = await db
-            .select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, message.deletedBy));
+        // Get author information
+        const [author] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, message.userId));
+        
+        // Get moderator information
+        const [moderator] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, message.deletedBy || 0));
+        
+        // Get media information if message has media
+        let media = null;
+        if (message.hasMedia && message.mediaId) {
+          const [mediaInfo] = await db
+            .select()
+            .from(mediaAttachments)
+            .where(eq(mediaAttachments.id, message.mediaId));
           
-          return {
-            ...message,
-            moderatorName: moderator?.username
-          };
+          if (mediaInfo) {
+            media = mediaInfo;
+          }
         }
-        return message;
+        
+        return {
+          id: message.id,
+          content: message.content,
+          createdAt: message.createdAt,
+          authorId: message.userId,
+          authorName: author?.username || 'Unknown User',
+          deletedBy: message.deletedBy || 0,
+          moderatorName: moderator?.username || 'Unknown Moderator',
+          deletedAt: message.deletedAt || '',
+          hasMedia: message.hasMedia,
+          media
+        };
       })
     );
     
     // Get total count for pagination
-    const [count] = await db
-      .select({ count: sql`count(*)` })
+    const [countResult] = await db
+      .select({ count: sql`count(*)::int` })
       .from(messages)
       .where(and(
         eq(messages.isDeleted, true),
         eq(messages.clubIndex, 1995)
       ));
     
+    // Ensure count is properly handled as a number
+    const totalCount = typeof countResult.count === 'number' 
+      ? countResult.count 
+      : parseInt(String(countResult.count), 10) || 0;
+    
     return res.json({
       messages: messagesWithModeratorInfo,
       pagination: {
-        total: parseInt(count.count.toString()),
+        total: totalCount,
         page,
         limit,
-        pages: Math.ceil(parseInt(count.count.toString()) / limit)
+        pages: Math.ceil(totalCount / limit)
       }
     });
   } catch (error) {
