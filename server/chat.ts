@@ -513,24 +513,42 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
       thumbnailPath = '/video-placeholder.png';
     }
     
-    // Save media information to database
-    const result = await db
-      .insert(mediaAttachments)
+    // First create a message with hasMedia flag
+    const [message] = await db
+      .insert(messages)
       .values({
         userId: req.user!.id,
-        mediaType: fileType,
-        mediaPath: `/uploads/${uniqueFileName}`,
-        thumbnailPath,
+        content: null,
+        hasMedia: true,
+        clubIndex: 1995, // Scoot(1995)
         createdAt: new Date()
       })
       .returning();
-      
-    // Extract the first result
-    const media = Array.isArray(result) ? result[0] : result;
     
+    // Then save media information to database with the message ID
+    const [media] = await db
+      .insert(mediaAttachments)
+      .values({
+        user_id: req.user!.id,  // Fixed column name to match database schema
+        message_id: message.id, // Fixed column name to match database schema
+        mediaType: fileType,
+        mediaPath: `/uploads/${uniqueFileName}`,
+        thumbnailPath,
+        created_at: new Date()  // Fixed column name to match database schema
+      })
+      .returning();
+    
+    // Update the message with the media ID
+    await db
+      .update(messages)
+      .set({ mediaId: media.id })
+      .where(eq(messages.id, message.id));
+    
+    // Return the media information
     res.json({ 
       mediaId: media.id,
-      mediaPath: media.mediaPath
+      mediaPath: media.mediaPath,
+      messageId: message.id
     });
   } catch (error) {
     console.error('Error uploading media:', error);
