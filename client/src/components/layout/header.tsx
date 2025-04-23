@@ -38,10 +38,20 @@ export function Header() {
               <ChevronDown className="h-4 w-4 text-white" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => setVersion("Scoot(34)")}>
+              <DropdownMenuItem 
+                onSelect={() => {
+                  setVersion("Scoot(34)");
+                  setLocation("/");
+                }}
+              >
                 Scoot(34)
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setVersion("Scoot(1995)")}>
+              <DropdownMenuItem 
+                onSelect={() => {
+                  setVersion("Scoot(1995)");
+                  setLocation("/");
+                }}
+              >
                 Scoot(1995)
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -50,7 +60,8 @@ export function Header() {
 
         {user ? (
           <div className="flex items-center gap-4">
-            {(user.isEngineer || user.isRoot) && (
+            {/* Hide Players and Games buttons in Scoot(1995) */}
+            {(user.isEngineer || user.isRoot) && version !== "Scoot(1995)" && (
               <>
                 <Link href="/users">
                   <Button variant="outline">Players</Button>
