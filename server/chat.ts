@@ -529,12 +529,12 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
     const [media] = await db
       .insert(mediaAttachments)
       .values({
-        user_id: req.user!.id,  // Fixed column name to match database schema
-        message_id: message.id, // Fixed column name to match database schema
+        userId: req.user!.id,
+        messageId: message.id,
         mediaType: fileType,
         mediaPath: `/uploads/${uniqueFileName}`,
         thumbnailPath,
-        created_at: new Date()  // Fixed column name to match database schema
+        createdAt: new Date()
       })
       .returning();
     
@@ -547,6 +547,7 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
     // Return the media information
     res.json({ 
       mediaId: media.id,
+      mediaType: media.mediaType,
       mediaPath: media.mediaPath,
       messageId: message.id
     });
