@@ -36,7 +36,7 @@ export default function AuthPage() {
             <div className="flex justify-center">
               <ScootLogo className="h-12 w-12" />
             </div>
-            <CardTitle className="text-center">Welcome to Scoot</CardTitle>
+            <CardTitle className="text-center">Welcome to Scoot(34)</CardTitle>
           </CardHeader>
           <CardContent>
             <Form {...loginForm}>
