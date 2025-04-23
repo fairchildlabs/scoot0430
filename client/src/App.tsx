@@ -9,6 +9,7 @@ import UserManagementPage from "@/pages/user-management";
 import GamesPage from "@/pages/games-page";
 import { AuthProvider } from "./hooks/use-auth";
 import { DatabaseRefreshProvider } from "./hooks/use-database-refresh";
+import { VersionProvider } from "./hooks/use-version";
 import { ProtectedRoute } from "./lib/protected-route";
 
 function Router() {

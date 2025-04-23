@@ -1,11 +1,21 @@
+import { useState } from "react";
 import { ScootLogo } from "../logos/scoot-logo";
 import { Button } from "../ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Badge } from "../ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 
 export function Header() {
   const { user, logoutMutation } = useAuth();
+  const [selectedVersion, setSelectedVersion] = useState("Scoot(34)");
+  const [, setLocation] = useLocation();
 
   function getUserPermissions(user: any) {
     const permissions = [];
@@ -16,14 +26,27 @@ export function Header() {
     if (user.isRoot) permissions.push('Root');
     return permissions;
   }
-
+  
   return (
     <header className="bg-black border-b border-border">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <ScootLogo className="h-8 w-8 text-white" />
-          <span className="text-white font-bold text-xl">Scoot(34)</span>
-        </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1 focus:outline-none">
+              <span className="text-white font-bold text-xl">{selectedVersion}</span>
+              <ChevronDown className="h-4 w-4 text-white" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => setSelectedVersion("Scoot(34)")}>
+                Scoot(34)
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setSelectedVersion("Scoot(1995)")}>
+                Scoot(1995)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         {user ? (
           <div className="flex items-center gap-4">
