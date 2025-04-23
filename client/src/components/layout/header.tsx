@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { ScootLogo } from "../logos/scoot-logo";
 import { Button } from "../ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useVersion } from "@/hooks/use-version";
 import { Link, useLocation } from "wouter";
 import { Badge } from "../ui/badge";
 import {
@@ -14,7 +14,7 @@ import { ChevronDown } from "lucide-react";
 
 export function Header() {
   const { user, logoutMutation } = useAuth();
-  const [selectedVersion, setSelectedVersion] = useState("Scoot(34)");
+  const { version, setVersion } = useVersion();
   const [, setLocation] = useLocation();
 
   function getUserPermissions(user: any) {
@@ -34,14 +34,14 @@ export function Header() {
           <ScootLogo className="h-8 w-8 text-white" />
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1 focus:outline-none">
-              <span className="text-white font-bold text-xl">{selectedVersion}</span>
+              <span className="text-white font-bold text-xl">{version}</span>
               <ChevronDown className="h-4 w-4 text-white" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => setSelectedVersion("Scoot(34)")}>
+              <DropdownMenuItem onSelect={() => setVersion("Scoot(34)")}>
                 Scoot(34)
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setSelectedVersion("Scoot(1995)")}>
+              <DropdownMenuItem onSelect={() => setVersion("Scoot(1995)")}>
                 Scoot(1995)
               </DropdownMenuItem>
             </DropdownMenuContent>
