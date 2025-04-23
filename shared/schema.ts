@@ -86,6 +86,39 @@ export const gamePlayers = pgTable("game_players", {
   team: integer("team").notNull(),
 });
 
+// Chat message table for Scoot(1995)
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  content: text("content"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  clubIndex: integer("club_index").notNull().default(1995), // Scoot(1995)
+  hasMedia: boolean("has_media").default(false).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  deletedBy: integer("deleted_by").references(() => users.id),
+  deletedAt: timestamp("deleted_at"),
+});
+
+// Media attachments for chat messages
+export const mediaAttachments = pgTable("media_attachments", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messages.id),
+  mediaType: text("media_type").notNull(), // "image", "video", etc.
+  mediaPath: text("media_path").notNull(),
+  thumbnailPath: text("thumbnail_path"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Moderation logs for tracking moderation actions
+export const moderationLogs = pgTable("moderation_logs", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messages.id),
+  userId: integer("user_id").notNull().references(() => users.id), // User who took action
+  action: text("action").notNull(), // e.g. "delete", "restore"
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  notes: text("notes"), // Optional notes from moderator
+});
+
 // Define schemas after all tables are defined
 const userBaseSchema = createInsertSchema(users);
 
@@ -142,6 +175,28 @@ export const insertGameSchema = createInsertSchema(games, {
 export const insertCheckinSchema = createInsertSchema(checkins);
 export const insertGamePlayerSchema = createInsertSchema(gamePlayers);
 
+// Chat-related schemas
+export const insertMessageSchema = createInsertSchema(messages, {
+  content: z.string().nullish(),
+  hasMedia: z.boolean().default(false),
+}).omit({
+  id: true,
+  createdAt: true,
+  isDeleted: true,
+  deletedBy: true,
+  deletedAt: true,
+});
+
+export const insertMediaAttachmentSchema = createInsertSchema(mediaAttachments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertModerationLogSchema = createInsertSchema(moderationLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
 // Export types after schemas are defined
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -151,3 +206,11 @@ export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type GameSet = typeof gameSets.$inferSelect;
 export type InsertGameSet = z.infer<typeof insertGameSetSchema>;
 export type InsertGame = z.infer<typeof insertGameSchema>;
+
+// Chat-related types
+export type Message = typeof messages.$inferSelect;
+export type MediaAttachment = typeof mediaAttachments.$inferSelect;
+export type ModerationLog = typeof moderationLogs.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type InsertMediaAttachment = z.infer<typeof insertMediaAttachmentSchema>;
+export type InsertModerationLog = z.infer<typeof insertModerationLogSchema>;
