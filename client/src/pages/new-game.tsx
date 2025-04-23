@@ -96,6 +96,7 @@ const NewGamePage = () => {
   // Important: Initialize state with court parameter
   const [selectedCourt, setSelectedCourt] = useState<string>(courtParam || "1");
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [swap, setSwap] = useState<boolean>(false);
   const [, navigate] = useLocation();
 
   // Only allow engineers and root users
@@ -145,10 +146,11 @@ const NewGamePage = () => {
       if (activeGameSet && activeGameSet.id > 0 && !proposedGameData && !isProposalLoading) {
         setIsProposalLoading(true);
         try {
-          console.log('Auto-proposing game for game set:', activeGameSet.id, 'on court:', selectedCourt);
+          console.log('Auto-proposing game for game set:', activeGameSet.id, 'on court:', selectedCourt, 'swap:', swap);
           const data = await scootdApiRequest<any>("POST", "propose-game", {
             gameSetId: activeGameSet.id,
-            court: selectedCourt
+            court: selectedCourt,
+            swap: swap
           });
           console.log('Auto-proposed game data:', data);
           
@@ -187,12 +189,13 @@ const NewGamePage = () => {
         throw new Error("No active game set available");
       }
       
-      console.log('Creating game for game set:', activeGameSet.id, 'on court:', selectedCourt);
+      console.log('Creating game for game set:', activeGameSet.id, 'on court:', selectedCourt, 'swap:', swap);
       
-      // Call the scootd new-game endpoint
+      // Call the scootd new-game endpoint with swap parameter
       const data = await scootdApiRequest("POST", "new-game", {
         gameSetId: activeGameSet.id,
-        court: selectedCourt
+        court: selectedCourt,
+        swap: swap
       });
       
       console.log('Created game data:', data);
@@ -436,6 +439,24 @@ const NewGamePage = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Select Court {courtParam && `(Court ${courtParam} preselected)`}</h3>
                 <CourtSelection />
+                
+                {/* Team swap option */}
+                <div className="mt-4 flex items-center space-x-2 bg-white rounded-lg p-4">
+                  <input
+                    type="checkbox"
+                    id="swap-teams"
+                    checked={swap}
+                    onChange={(e) => {
+                      setSwap(e.target.checked);
+                      // When swap option changes, we need to re-propose the game
+                      setProposedGameData(null);
+                    }}
+                    className="h-4 w-4 text-black border-black rounded"
+                  />
+                  <Label htmlFor="swap-teams" className="text-black">
+                    Swap Teams (Reverse team assignments)
+                  </Label>
+                </div>
               </div>
               
               {/* Player check-in counter */}

@@ -854,7 +854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
-      const { gameSetId, court } = req.body;
+      const { gameSetId, court, swap } = req.body;
       
       if (!gameSetId || !court) {
         console.log('POST /api/scootd/propose-game - Missing required parameters:', { gameSetId, court });
@@ -863,8 +863,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Add the swap parameter if it exists (defaults to 0/false if not provided)
+      const swapParam = swap ? '1' : '0';
+      
       // Execute the scootd propose-game command WITHOUT create flag
-      const output = await executeScootd(`propose-game ${gameSetId} ${court} json`);
+      const output = await executeScootd(`propose-game ${gameSetId} ${court} json ${swapParam}`);
       
       // Extract and parse JSON using our helper function
       const data = extractAndParseJson(output);
@@ -916,7 +919,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
-      const { gameSetId, court } = req.body;
+      const { gameSetId, court, swap } = req.body;
       
       if (!gameSetId || !court) {
         console.log('POST /api/scootd/new-game - Missing required parameters:', { gameSetId, court });
@@ -925,8 +928,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Add the swap parameter if it exists (defaults to 0/false if not provided)
+      const swapParam = swap ? '1' : '0';
+      
       // Execute the scootd new-game command instead of propose-game with create flag
-      const output = await executeScootd(`new-game ${gameSetId} ${court} json`);
+      const output = await executeScootd(`new-game ${gameSetId} ${court} json ${swapParam}`);
       
       // Extract and parse JSON using our helper function
       const data = extractAndParseJson(output);
