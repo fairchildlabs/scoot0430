@@ -351,18 +351,20 @@ async function isRootUser(userId: number): Promise<boolean> {
 function broadcastMessage(message: any) {
   const messageStr = JSON.stringify(message);
   
-  for (const [socket, client] of clients.entries()) {
+  // Use Array.from to convert entries to an array for iteration
+  Array.from(clients.entries()).forEach(([socket, client]) => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(messageStr);
     }
-  }
+  });
 }
 
 // Broadcast a moderation action to all connected clients
 function broadcastModeration(messageId: number, action: string) {
   const now = new Date().toISOString();
   
-  for (const [socket, client] of clients.entries()) {
+  // Use Array.from to convert entries to an array for iteration
+  Array.from(clients.entries()).forEach(([socket, client]) => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         type: 'moderation',
@@ -373,7 +375,7 @@ function broadcastModeration(messageId: number, action: string) {
         moderatorName: '' // Will be filled by the client
       }));
     }
-  }
+  });
 }
 
 // Get recent messages
@@ -442,7 +444,7 @@ export async function getRecentMessages(limit = 50) {
 export async function createMessage({ userId, content, hasMedia = false, mediaId = null }: { userId: number; content: string | null; hasMedia?: boolean; mediaId?: number | null; }) {
   try {
     // Insert the message
-    const [newMessage] = await db
+    const result = await db
       .insert(messages)
       .values({
         userId,
@@ -450,10 +452,13 @@ export async function createMessage({ userId, content, hasMedia = false, mediaId
         clubIndex: 1995, // Hard-coded to Scoot(1995)
         hasMedia,
         mediaId,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
         isDeleted: false
       })
       .returning();
+    
+    // Extract the first result
+    const newMessage = Array.isArray(result) ? result[0] : result;
     
     return newMessage;
   } catch (error) {
@@ -509,16 +514,19 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
     }
     
     // Save media information to database
-    const [media] = await db
+    const result = await db
       .insert(mediaAttachments)
       .values({
         userId: req.user!.id,
         mediaType: fileType,
         mediaPath: `/uploads/${uniqueFileName}`,
         thumbnailPath,
-        createdAt: new Date().toISOString()
+        createdAt: new Date()
       })
       .returning();
+      
+    // Extract the first result
+    const media = Array.isArray(result) ? result[0] : result;
     
     res.json({ 
       mediaId: media.id,
@@ -625,7 +633,7 @@ export async function moderateMessage(
       .set({
         isDeleted: true,
         deletedBy: moderatorId,
-        deletedAt: new Date().toISOString()
+        deletedAt: new Date()
       })
       .where(eq(messages.id, messageId))
       .returning();
@@ -634,10 +642,10 @@ export async function moderateMessage(
     await db
       .insert(moderationLogs)
       .values({
-        messageId,
-        moderatorId,
+        messageId: messageId,
+        userId: moderatorId, // Using the column name from schema
         action: 'delete',
-        createdAt: new Date().toISOString()
+        timestamp: new Date() // Using the column name from schema
       });
     
     return updatedMessage;
@@ -668,10 +676,10 @@ export async function restoreMessage(
     await db
       .insert(moderationLogs)
       .values({
-        messageId,
-        moderatorId,
+        messageId: messageId,
+        userId: moderatorId, // Using the column name from schema
         action: 'restore',
-        createdAt: new Date().toISOString()
+        timestamp: new Date() // Using the column name from schema
       });
     
     return updatedMessage;
