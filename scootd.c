@@ -33,7 +33,7 @@ void bottom_player(PGconn *conn, int game_set_id, int queue_position, int user_i
 void show_player_info(PGconn *conn, const char *username, const char *format);
 // void promote_players(PGconn *conn, int game_id, bool promote_winners); // Removed as requested
 void list_next_up_players(PGconn *conn, int game_set_id, const char *format);
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format);
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format, bool swap);
 // void finalize_game(PGconn *conn, int game_id, int team1_score, int team2_score); // Removed as requested
 // Removed direct SQL query function as requested
 
@@ -900,7 +900,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
 /**
  * Propose a new game without creating it
  */
-void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format) {
+void propose_game(PGconn *conn, int game_set_id, const char *court, const char *format, bool bCreate, const char *status_format, bool swap) {
     char query[4096];
     PGresult *res;
     
@@ -1044,10 +1044,28 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             if (players[i].team == 0) {
                 // Assign to team with fewer players
                 if (home_team_count < 4) {
-                    players[i].team = 1; // HOME
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
                     home_team_count++;
                 } else {
-                    players[i].team = 2; // AWAY
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+                    away_team_count++;
+                }
+            } else if (swap) {
+                // If swap is true, reverse the existing team assignments
+                players[i].team = players[i].team == 1 ? 2 : 1;
+            }
+        }
+        
+        // If swap is true, we need to recount the teams after swapping
+        if (swap) {
+            home_team_count = 0;
+            away_team_count = 0;
+            for (int i = 0; i < 8; i++) {
+                if (players[i].team == 1) {
+                    home_team_count++;
+                } else if (players[i].team == 2) {
                     away_team_count++;
                 }
             }
@@ -1154,10 +1172,28 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             if (players[i].team == 0) {
                 // Assign to team with fewer players
                 if (home_team_count < 4) {
-                    players[i].team = 1;
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
                     home_team_count++;
                 } else {
-                    players[i].team = 2;
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+                    away_team_count++;
+                }
+            } else if (swap) {
+                // If swap is true, reverse the existing team assignments
+                players[i].team = players[i].team == 1 ? 2 : 1;
+            }
+        }
+        
+        // If swap is true, we need to recount the teams after swapping
+        if (swap) {
+            home_team_count = 0;
+            away_team_count = 0;
+            for (int i = 0; i < 8; i++) {
+                if (players[i].team == 1) {
+                    home_team_count++;
+                } else if (players[i].team == 2) {
                     away_team_count++;
                 }
             }
@@ -1360,15 +1396,15 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
             int team_to_assign;
             
             if (players[i].team != 0) {
-                // Keep existing team assignment
-                team_to_assign = players[i].team;
+                // Keep existing team assignment, but swap if needed
+                team_to_assign = swap ? (players[i].team == 1 ? 2 : 1) : players[i].team;
             } else {
-                // Assign to team with fewer players
+                // Assign to team with fewer players, but swap if needed
                 if (home_team_count < 4) {
-                    team_to_assign = 1;
+                    team_to_assign = swap ? 2 : 1;
                     home_team_count++;
                 } else {
-                    team_to_assign = 2;
+                    team_to_assign = swap ? 1 : 2;
                     away_team_count++;
                 }
             }
@@ -2999,8 +3035,8 @@ int main(int argc, char *argv[]) {
         printf("  checkout <game_set_id> <queue_position> <user_id> [format] - Check out a player from the queue and adjust queue positions (format: none|text|json, default: none)\n");
         printf("  player <username> [format] - Show detailed information about a player (format: text|json, default: text)\n");
         printf("  next-up [game_set_id] [format] - List next-up players for game set (format: text|json, default: text)\n");
-        printf("  propose-game <game_set_id> <court> [format] - Propose a new game without creating it (format: text|json, default: text)\n");
-        printf("  new-game <game_set_id> <court> [format] - Create a new game with next available players (format: text|json, default: text)\n");
+        printf("  propose-game <game_set_id> <court> [format] [swap] - Propose a new game without creating it (format: text|json, default: text; swap: 0|1, default: 0)\n");
+        printf("  new-game <game_set_id> <court> [format] [swap] - Create a new game with next available players (format: text|json, default: text; swap: 0|1, default: 0)\n");
         printf("  game-set-status <game_set_id> [json|text] - Show the status of a game set, including game set info, active games, next-up players, and completed games\n");
         printf("  end-game <game_id> <home_score> <away_score> [autopromote] [format] - End a game with the given scores and return the game set status (autopromote: true/false, default is true; format: none|text|json, default is none)\n");
         printf("  bump-player <game_set_id> <queue_position> <user_id> [format] - Swap a player with the next player below in the queue (format: none|text|json, default is none)\n");
@@ -3095,7 +3131,7 @@ int main(int argc, char *argv[]) {
         list_next_up_players(conn, game_set_id, format);
     } else if (strcmp(command, "propose-game") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s propose-game <game_set_id> <court> [format]\n", argv[0]);
+            fprintf(stderr, "Usage: %s propose-game <game_set_id> <court> [format] [swap]\n", argv[0]);
         } else {
             int game_set_id = atoi(argv[2]);
             if (game_set_id <= 0) {
@@ -3103,17 +3139,27 @@ int main(int argc, char *argv[]) {
             } else {
                 const char *court = argv[3];
                 const char *format = argc >= 5 ? argv[4] : "text";
+                bool swap = false;
                 
+                // Check if format is valid
                 if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
                     fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
-                } else {
-                    propose_game(conn, game_set_id, court, format, false, format);
+                    PQfinish(conn);
+                    return 1;
                 }
+                
+                // Check if swap parameter is provided
+                if (argc >= 6) {
+                    int swap_value = atoi(argv[5]);
+                    swap = (swap_value == 1);
+                }
+                
+                propose_game(conn, game_set_id, court, format, false, format, swap);
             }
         }
     } else if (strcmp(command, "new-game") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s new-game <game_set_id> <court> [format]\n", argv[0]);
+            fprintf(stderr, "Usage: %s new-game <game_set_id> <court> [format] [swap]\n", argv[0]);
         } else {
             int game_set_id = atoi(argv[2]);
             if (game_set_id <= 0) {
@@ -3121,12 +3167,22 @@ int main(int argc, char *argv[]) {
             } else {
                 const char *court = argv[3];
                 const char *format = argc >= 5 ? argv[4] : "text";
+                bool swap = false;
                 
+                // Check if format is valid
                 if (strcmp(format, "json") != 0 && strcmp(format, "text") != 0) {
                     fprintf(stderr, "Invalid format: %s (should be 'json' or 'text')\n", format);
-                } else {
-                    propose_game(conn, game_set_id, court, format, true, format);
+                    PQfinish(conn);
+                    return 1;
                 }
+                
+                // Check if swap parameter is provided
+                if (argc >= 6) {
+                    int swap_value = atoi(argv[5]);
+                    swap = (swap_value == 1);
+                }
+                
+                propose_game(conn, game_set_id, court, format, true, format, swap);
             }
         }
     } else if (strcmp(command, "game-set-status") == 0) {
