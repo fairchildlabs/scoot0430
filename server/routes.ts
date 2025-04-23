@@ -10,6 +10,8 @@ import { eq, and, sql, asc } from "drizzle-orm";
 import { cleanupDuplicateCheckins } from "./cleanup";
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { WebSocketServer } from 'ws';
+import { setupChatWebSocket, registerChatRoutes } from './chat';
 
 const execAsync = promisify(exec);
 
@@ -1092,6 +1094,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Register the chat routes
+  registerChatRoutes(app);
+  
+  // Create HTTP server
   const httpServer = createServer(app);
+  
+  // Set up WebSocket server for chat
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  setupChatWebSocket(wss);
+  
   return httpServer;
 }
