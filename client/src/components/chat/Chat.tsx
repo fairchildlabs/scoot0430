@@ -70,94 +70,27 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Initialize WebSocket connection
-  useEffect(() => {
-    if (!user) return;
-    
-    // Create WebSocket connection
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-    
-    // Connection opened
-    socket.addEventListener("open", () => {
-      console.log("WebSocket connection established");
-      setIsConnected(true);
-      
-      // Authenticate with the server
-      socket.send(JSON.stringify({
-        type: "auth",
-        userId: user.id,
-        isAdmin: user.isEngineer || user.isRoot
-      }));
-    });
-    
-    // Listen for messages
-    socket.addEventListener("message", handleSocketMessage);
-    
-    // Connection closed
-    socket.addEventListener("close", () => {
-      console.log("WebSocket connection closed");
-      setIsConnected(false);
-      
-      // Attempt to reconnect after a delay
-      setTimeout(() => {
-        if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
-          console.log("Attempting to reconnect...");
-          // The useEffect cleanup will remove the old socket
-          // and this effect will run again to create a new one
-        }
-      }, 3000);
-    });
-    
-    // Connection error
-    socket.addEventListener("error", (error) => {
-      console.error("WebSocket error:", error);
-      setIsConnected(false);
-    });
-    
-    // Load initial messages
-    fetchMessages();
-    
-    // Clean up on unmount
-    return () => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
+  // Fetch initial messages
+  const fetchMessages = async () => {
+    try {
+      const response = await fetch("/api/chat/messages");
+      if (!response.ok) {
+        throw new Error("Failed to fetch messages");
       }
-    };
-  }, [user]);
-  
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      
+      const data = await response.json();
+      setMessages(data);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load messages. Please try again.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
     }
-  }, [messages]);
-  
-  // Reset preview when dialog closes
-  useEffect(() => {
-    if (!mediaUploadOpen) {
-      setSelectedFile(null);
-      setPreview(null);
-      setUploadProgress(0);
-      setErrorMessage(null);
-    }
-  }, [mediaUploadOpen]);
-  
-  // Create URL preview for selected file
-  useEffect(() => {
-    if (!selectedFile) {
-      setPreview(null);
-      return;
-    }
-    
-    const objectUrl = URL.createObjectURL(selectedFile);
-    setPreview(objectUrl);
-    
-    // Free memory when preview is no longer needed
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [selectedFile]);
+  };
   
   // Handle incoming socket messages
   const handleSocketMessage = (event: MessageEvent) => {
@@ -205,27 +138,115 @@ export function Chat() {
     }
   };
   
-  // Fetch initial messages
-  const fetchMessages = async () => {
-    try {
-      const response = await fetch("/api/chat/messages");
-      if (!response.ok) {
-        throw new Error("Failed to fetch messages");
-      }
+  // Initialize WebSocket connection with reconnection logic
+  useEffect(() => {
+    if (!user) return;
+    
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
+    
+    // Load initial messages
+    fetchMessages();
+    
+    // Create WebSocket connection function
+    const connectWebSocket = () => {
+      if (!isComponentMounted) return;
       
-      const data = await response.json();
-      setMessages(data);
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load messages. Please try again.",
-        variant: "destructive"
+      // Create WebSocket connection
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      console.log(`Connecting to WebSocket at ${wsUrl}`);
+      
+      const ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+      
+      // Connection opened
+      ws.addEventListener("open", () => {
+        console.log("WebSocket connection established");
+        setIsConnected(true);
+        setErrorMessage(null);
+        
+        // Authenticate with the server
+        ws.send(JSON.stringify({
+          type: "auth",
+          userId: user.id,
+          isAdmin: user.isEngineer || user.isRoot
+        }));
       });
-      setIsLoading(false);
+      
+      // Listen for messages
+      ws.addEventListener("message", handleSocketMessage);
+      
+      // Connection closed
+      ws.addEventListener("close", (event) => {
+        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
+        setIsConnected(false);
+        
+        // Attempt to reconnect after a delay
+        if (isComponentMounted) {
+          console.log("Scheduling reconnection...");
+          reconnectTimer = setTimeout(() => {
+            console.log("Attempting to reconnect...");
+            connectWebSocket();
+          }, 3000);
+        }
+      });
+      
+      // Connection error
+      ws.addEventListener("error", (error) => {
+        console.error("WebSocket error:", error);
+        setIsConnected(false);
+        setErrorMessage("Failed to connect to chat server. Retrying...");
+      });
+    };
+    
+    // Initial connection
+    connectWebSocket();
+    
+    // Clean up on unmount
+    return () => {
+      isComponentMounted = false;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.close();
+      }
+    };
+  }, [user]);
+  
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  };
+  }, [messages]);
+  
+  // Reset preview when dialog closes
+  useEffect(() => {
+    if (!mediaUploadOpen) {
+      setSelectedFile(null);
+      setPreview(null);
+      setUploadProgress(0);
+      setErrorMessage(null);
+    }
+  }, [mediaUploadOpen]);
+  
+  // Create URL preview for selected file
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreview(null);
+      return;
+    }
+    
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreview(objectUrl);
+    
+    // Free memory when preview is no longer needed
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedFile]);
+  
+
   
   // Handle message submission
   const handleSubmit = (e: FormEvent) => {
