@@ -148,26 +148,39 @@ const NewGamePage = () => {
     enabled: !!user,
   });
   
-  // When the component loads, check the courtMode and move to the right court if one is busy
+  // When the component loads, check for court availability and make the proper selection
   useEffect(() => {
-    // Only run this once on component load
-    if (gameSetStatusForCourts && gameSetStatusForCourts.active_games && courtMode === 'either') {
+    // Run this for any court mode (either, only, or undefined)
+    if (gameSetStatusForCourts && gameSetStatusForCourts.active_games) {
       // Find active courts (courts with active games)
       const activeCourts = gameSetStatusForCourts.active_games.map(game => game.court);
       console.log('Active courts (initial check):', activeCourts);
       
-      // If court 1 is busy, select court 2 (assuming we have 2 courts)
-      if (selectedCourt === '1' && activeCourts.includes('1') && !activeCourts.includes('2')) {
-        console.log('Court 1 is busy, selecting court 2 instead');
-        setSelectedCourt('2');
+      // Get the total number of courts
+      const numberOfCourts = gameSetStatusForCourts.game_set_info?.number_of_courts || 2;
+      
+      // If we're in either mode or no mode is specified, handle automatic court selection
+      if (courtMode === 'either' || !courtMode) {
+        // If court 1 is busy, select court 2 (assuming we have 2 courts)
+        if (activeCourts.includes('1') && !activeCourts.includes('2') && numberOfCourts >= 2) {
+          console.log('Court 1 is busy, selecting court 2 instead');
+          setSelectedCourt('2');
+        }
+        // If court 2 is busy, select court 1
+        else if (activeCourts.includes('2') && !activeCourts.includes('1')) {
+          console.log('Court 2 is busy, selecting court 1 instead');
+          setSelectedCourt('1');
+        }
       }
-      // If court 2 is busy, select court 1
-      else if (selectedCourt === '2' && activeCourts.includes('2') && !activeCourts.includes('1')) {
-        console.log('Court 2 is busy, selecting court 1 instead');
-        setSelectedCourt('1');
+      // If we're in "only" mode, check if the specified court is available
+      else if (courtMode === 'only' && courtParam) {
+        // If the specified court is busy, show a message
+        if (activeCourts.includes(courtParam)) {
+          setStatusMessage(`Court ${courtParam} is already in use. Please select a different court.`);
+        }
       }
     }
-  }, [gameSetStatusForCourts, courtMode]);
+  }, [gameSetStatusForCourts, courtMode, courtParam]);
   
   // Automatically propose a game when the page loads and we have active game set data
   useEffect(() => {
