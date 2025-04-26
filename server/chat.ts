@@ -68,11 +68,13 @@ export function setupChatWebSocket(wss: WebSocketServer) {
           
           console.log(`WebSocket auth attempt - userId: ${userId}, isAdmin: ${isAdmin}`);
           
-          if (!userId) {
-            console.log('Authentication failed: Missing user ID');
+          // Check if userId is null, undefined or not a number
+          // Note: We must allow userID 0 as a valid ID
+          if (userId === null || userId === undefined || isNaN(Number(userId))) {
+            console.log('Authentication failed: Invalid user ID');
             socket.send(JSON.stringify({
               type: 'error',
-              error: 'Authentication failed: Missing user ID'
+              error: 'Authentication failed: Invalid user ID'
             }));
             return;
           }
@@ -92,6 +94,9 @@ export function setupChatWebSocket(wss: WebSocketServer) {
               }));
               return;
             }
+            
+            // Debug successful user lookup
+            console.log(`User found: ${user.username} (ID: ${userId}), isRoot: ${user.isRoot}, isEngineer: ${user.isEngineer}`);
             
             // Store client information with verified data
             const isUserAdmin = user.isRoot || user.isEngineer;
