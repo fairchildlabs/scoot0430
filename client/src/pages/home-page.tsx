@@ -835,7 +835,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                         if (activeCourts.length >= totalCourts) return null;
                         
                         // Create an array of available courts
-                        const availableCourts = [];
+                        const availableCourts: string[] = [];
                         for (let i = 1; i <= totalCourts; i++) {
                           if (!activeCourts.includes(i.toString())) {
                             availableCourts.push(i.toString());
