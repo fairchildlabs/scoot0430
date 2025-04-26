@@ -9,8 +9,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(fileUpload({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  useTempFiles: false,
+  limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB limit
+  useTempFiles: true,
+  tempFileDir: '/tmp/',
   createParentPath: true,
   abortOnLimit: true
 }));

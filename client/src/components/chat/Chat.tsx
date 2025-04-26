@@ -341,9 +341,9 @@ export function Chat() {
       return;
     }
     
-    // Check file size (10MB limit)
-    if (file.size > 10 * 1024 * 1024) {
-      setErrorMessage("File size exceeds the 10MB limit.");
+    // Check file size (1GB limit)
+    if (file.size > 1024 * 1024 * 1024) {
+      setErrorMessage("File size exceeds the 1GB limit.");
       return;
     }
     
@@ -550,7 +550,7 @@ export function Chat() {
                         </div>
                         <h3 className="text-lg font-medium">No file selected</h3>
                         <p className="text-sm text-gray-400">
-                          Click 'Browse' to select an image or video (max 10MB)
+                          Click 'Browse' to select an image or video (max 1GB)
                         </p>
                         <Button 
                           onClick={handleOpenFilePicker}
