@@ -96,16 +96,39 @@ export function Chat() {
   const handleSocketMessage = (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data);
+      console.log("WebSocket received:", data.type);
       
       if (data.type === "message") {
         // New message received
+        console.log("New message received:", data.message);
         setMessages(prevMessages => [...prevMessages, data.message]);
-      } else if (data.type === "messages") {
+        
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      } 
+      else if (data.type === "messages") {
         // Initial messages load
+        console.log(`Received ${data.messages.length} messages from server`);
         setMessages(data.messages);
         setIsLoading(false);
-      } else if (data.type === "moderation") {
+        
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      } 
+      else if (data.type === "auth_success") {
+        // Authentication successful
+        console.log("WebSocket authentication successful:", data.user);
+        setIsConnected(true);
+        setErrorMessage(null);
+      } 
+      else if (data.type === "moderation") {
         // Message moderation (delete/restore)
+        console.log(`Moderation action received: ${data.action} for message ${data.messageId}`);
+        
         if (data.action === "delete") {
           // Update the message as deleted
           setMessages(prevMessages => 
@@ -125,13 +148,30 @@ export function Chat() {
             )
           );
         }
-      } else if (data.type === "error") {
+      } 
+      else if (data.type === "error") {
         // Error from server
+        console.error("WebSocket error received:", data.error);
         toast({
-          title: "Error",
+          title: "Chat Error",
           description: data.error,
           variant: "destructive"
         });
+        
+        // If authentication error, try to re-authenticate
+        if (data.error.includes("Not authenticated") || data.error.includes("Authentication failed")) {
+          const ws = socketRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN && user) {
+            console.log("Attempting to re-authenticate WebSocket...");
+            setTimeout(() => {
+              ws.send(JSON.stringify({
+                type: "auth",
+                userId: user.id,
+                isAdmin: user.isEngineer || user.isRoot
+              }));
+            }, 1000);
+          }
+        }
       }
     } catch (error) {
       console.error("Error parsing message:", error);
