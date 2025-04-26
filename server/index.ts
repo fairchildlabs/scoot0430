@@ -94,17 +94,18 @@ process.on('SIGINT', () => shutdownGracefully('SIGINT'));
     }
     console.log('Database connection successful');
 
-    // Initialize Express server first
-    server = app.listen({
+    console.log('Registering routes...');
+    // Get the HTTP server from registerRoutes which also sets up WebSockets
+    server = await registerRoutes(app);
+    console.log('Routes registered successfully');
+    
+    // Start listening on the HTTP server
+    server.listen({
       port: process.env.PORT || 5000,
       host: "0.0.0.0"
     }, () => {
       console.log(`Server listening on port ${process.env.PORT || 5000}`);
     });
-
-    console.log('Registering routes...');
-    await registerRoutes(app);
-    console.log('Routes registered successfully');
 
     // Error handling middleware
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
