@@ -66,7 +66,10 @@ export function setupChatWebSocket(wss: WebSocketServer) {
         if (data.type === 'auth') {
           const { userId, isAdmin } = data;
           
+          console.log(`WebSocket auth attempt - userId: ${userId}, isAdmin: ${isAdmin}`);
+          
           if (!userId) {
+            console.log('Authentication failed: Missing user ID');
             socket.send(JSON.stringify({
               type: 'error',
               error: 'Authentication failed: Missing user ID'
@@ -74,17 +77,55 @@ export function setupChatWebSocket(wss: WebSocketServer) {
             return;
           }
           
-          // Store client information
-          clients.set(socket, { socket, userId, isAdmin: !!isAdmin });
-          
-          // Send recent messages to the new user
-          const recentMessages = await getRecentMessages();
-          socket.send(JSON.stringify({
-            type: 'messages',
-            messages: recentMessages
-          }));
-          
-          console.log(`User ${userId} authenticated with WebSocket${isAdmin ? ' (admin)' : ''}`);
+          try {
+            // Verify user exists in database
+            const [user] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, userId));
+            
+            if (!user) {
+              console.log(`Authentication failed: User ID ${userId} not found`);
+              socket.send(JSON.stringify({
+                type: 'error',
+                error: 'Authentication failed: User not found'
+              }));
+              return;
+            }
+            
+            // Store client information with verified data
+            const isUserAdmin = user.isRoot || user.isEngineer;
+            clients.set(socket, { 
+              socket, 
+              userId, 
+              isAdmin: isUserAdmin
+            });
+            
+            // Send authentication confirmation
+            socket.send(JSON.stringify({
+              type: 'auth_success',
+              user: {
+                id: user.id,
+                username: user.username,
+                isAdmin: isUserAdmin
+              }
+            }));
+            
+            // Send recent messages to the new user
+            const recentMessages = await getRecentMessages();
+            socket.send(JSON.stringify({
+              type: 'messages',
+              messages: recentMessages
+            }));
+            
+            console.log(`User ${user.username} (${userId}) authenticated with WebSocket${isUserAdmin ? ' (admin)' : ''}`);
+          } catch (error) {
+            console.error('Error during WebSocket authentication:', error);
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Authentication error: Server error'
+            }));
+          }
           return;
         }
         
