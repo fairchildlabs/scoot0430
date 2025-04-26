@@ -81,16 +81,18 @@ type ProposedGameData = {
 const NewGamePage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  // Parse and use the court parameter from the URL if available
+  // Parse and use the court parameter and courtMode from the URL
   const [location] = useLocation();
   const searchParams = new URLSearchParams(location.split('?')[1] || '');
   const courtParam = searchParams.get('court');
+  const courtMode = searchParams.get('courtMode');
   
   // Debug output to check what's coming from URL
   console.log('URL parameters:', { 
     fullLocation: location,
     searchPart: location.split('?')[1],
-    courtParam: courtParam 
+    courtParam: courtParam,
+    courtMode: courtMode
   });
   
   // Important: Initialize state with court parameter
@@ -140,6 +142,33 @@ const NewGamePage = () => {
   const [proposedGameData, setProposedGameData] = useState<ProposedGameData | null>(null);
   const [isProposalLoading, setIsProposalLoading] = useState<boolean>(false);
   
+  // Check if courts are busy after the component loads and game set status is loaded
+  const { data: gameSetStatusForCourts } = useQuery<GameSetStatus>({
+    queryKey: ["/api/scootd/game-set-status"],
+    enabled: !!user,
+  });
+  
+  // When the component loads, check the courtMode and move to the right court if one is busy
+  useEffect(() => {
+    // Only run this once on component load
+    if (gameSetStatusForCourts && gameSetStatusForCourts.active_games && courtMode === 'either') {
+      // Find active courts (courts with active games)
+      const activeCourts = gameSetStatusForCourts.active_games.map(game => game.court);
+      console.log('Active courts (initial check):', activeCourts);
+      
+      // If court 1 is busy, select court 2 (assuming we have 2 courts)
+      if (selectedCourt === '1' && activeCourts.includes('1') && !activeCourts.includes('2')) {
+        console.log('Court 1 is busy, selecting court 2 instead');
+        setSelectedCourt('2');
+      }
+      // If court 2 is busy, select court 1
+      else if (selectedCourt === '2' && activeCourts.includes('2') && !activeCourts.includes('1')) {
+        console.log('Court 2 is busy, selecting court 1 instead');
+        setSelectedCourt('1');
+      }
+    }
+  }, [gameSetStatusForCourts, courtMode]);
+  
   // Automatically propose a game when the page loads and we have active game set data
   useEffect(() => {
     async function proposeGameOnLoad() {
@@ -158,6 +187,13 @@ const NewGamePage = () => {
           // Example: { "status": "GAME_IN_PROGRESS", "message": "Game already in progress on court 1 (Game ID: 4)" }
           if (data && data.status && data.status === "GAME_IN_PROGRESS") {
             setStatusMessage(data.message || "Game already in progress on this court.");
+            
+            // If we're in "either" court mode, try the other court automatically
+            if (courtMode === 'either') {
+              const otherCourt = selectedCourt === '1' ? '2' : '1';
+              console.log(`Automatically trying other court: ${otherCourt}`);
+              setSelectedCourt(otherCourt);
+            }
             // Don't set proposedGameData in this case to avoid errors
           } else if (data && data.team1 && data.team2) {
             // Only set the game data if it has the expected structure
@@ -180,7 +216,7 @@ const NewGamePage = () => {
       }
     }
     proposeGameOnLoad();
-  }, [activeGameSet, selectedCourt, toast, proposedGameData, isProposalLoading]);
+  }, [activeGameSet, selectedCourt, toast, proposedGameData, isProposalLoading, courtMode]);
   
   // Mutation to create a game after proposal
   const createGameMutation = useMutation({
@@ -379,34 +415,65 @@ const NewGamePage = () => {
     );
   };
 
-  // Generate court selection UI based on number of courts
+  // Generate court selection UI based on number of courts and courtMode restrictions
   const CourtSelection = () => {
     const numberOfCourts = activeGameSet?.numberOfCourts || 1;
-
+    
+    // Check if we have active games
+    const { data: gameSetStatus } = useQuery<GameSetStatus>({
+      queryKey: ["/api/scootd/game-set-status"],
+      enabled: !!user,
+    });
+    
+    // Find active courts (courts with active games)
+    const activeCourts = gameSetStatus?.active_games?.map(game => game.court) || [];
+    console.log('Active courts:', activeCourts);
+    
+    // If courtMode is "only", restrict to the specified court
+    const isOnlyMode = courtMode === 'only' ? true : false;
+    
+    // If we specify "either" court, we allow any court
+    // If a court has a game in progress, it should be disabled
     return (
       <RadioGroup
         value={selectedCourt}
         onValueChange={(value) => {
           console.log('Court selection changed to:', value);
           setSelectedCourt(value);
+          // When we change court selection, reset proposedGameData to trigger a new proposal
+          setProposedGameData(null);
+          setStatusMessage('');
         }}
         className="flex items-center justify-center gap-4 bg-white rounded-lg p-4"
       >
-        {Array.from({ length: numberOfCourts }, (_, i) => i + 1).map((courtNumber) => (
-          <div key={courtNumber} className="flex items-center space-x-2">
-            <RadioGroupItem
-              value={courtNumber.toString()}
-              id={`court-${courtNumber}`}
-              className="text-black border-2 border-black data-[state=checked]:bg-black data-[state=checked]:border-black"
-            />
-            <Label
-              htmlFor={`court-${courtNumber}`}
-              className="text-black"
-            >
-              Court #{courtNumber}
-            </Label>
-          </div>
-        ))}
+        {Array.from({ length: numberOfCourts }, (_, i) => i + 1).map((courtNumber) => {
+          const courtNumberStr = courtNumber.toString();
+          // Disable court if:
+          // 1. Court has an active game
+          // 2. We're in "only" mode and this isn't the specified court
+          const isDisabled = 
+            activeCourts.includes(courtNumberStr) || 
+            (isOnlyMode && courtParam !== null && courtNumberStr !== courtParam);
+          
+          return (
+            <div key={courtNumber} className="flex items-center space-x-2">
+              <RadioGroupItem
+                value={courtNumberStr}
+                id={`court-${courtNumber}`}
+                className={`text-black border-2 border-black data-[state=checked]:bg-black data-[state=checked]:border-black ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={!!isDisabled}
+              />
+              <Label
+                htmlFor={`court-${courtNumber}`}
+                className={`text-black ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                Court #{courtNumber}
+                {activeCourts.includes(courtNumberStr) && " (In Use)"}
+                {isOnlyMode && courtParam && courtNumberStr === courtParam && " (Pre-selected)"}
+              </Label>
+            </div>
+          );
+        })}
       </RadioGroup>
     );
   };
