@@ -242,17 +242,32 @@ export function setupChatWebSocket(wss: WebSocketServer) {
           }
           
           // Delete the message
-          await moderateMessage(messageId, client.userId);
-          
-          // Get moderator's username
-          const moderator = await db
-            .select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, client.userId))
-            .then(rows => rows[0]);
-          
-          // Broadcast deletion to all clients
-          broadcastModeration(messageId, 'delete');
+          console.log(`Deleting message ${messageId} by moderator ${client.userId}`);
+          try {
+            // First update message in database
+            const updatedMessage = await moderateMessage(messageId, client.userId);
+            console.log(`Message ${messageId} marked as deleted in database`);
+            
+            // Get moderator's username for logging
+            const moderator = await db
+              .select({ username: users.username })
+              .from(users)
+              .where(eq(users.id, client.userId))
+              .then(rows => rows[0]);
+            
+            console.log(`Moderator: ${moderator?.username || 'Unknown'} (${client.userId})`);
+            
+            // Broadcast deletion to all clients
+            await broadcastModeration(messageId, 'delete');
+            console.log(`Moderation broadcast completed for message ${messageId}`);
+          } catch (error) {
+            console.error(`Error processing delete for message ${messageId}:`, error);
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Failed to delete message. Please try again.'
+            }));
+            return;
+          }
           
           // Send confirmation to the client
           socket.send(JSON.stringify({
@@ -306,10 +321,23 @@ export function setupChatWebSocket(wss: WebSocketServer) {
           }
           
           // Restore the message
-          await restoreMessage(messageId, client.userId);
-          
-          // Broadcast restoration to all clients
-          broadcastModeration(messageId, 'restore');
+          console.log(`Restoring message ${messageId} by moderator ${client.userId}`);
+          try {
+            // First update message in database
+            const updatedMessage = await restoreMessage(messageId, client.userId);
+            console.log(`Message ${messageId} restored in database`);
+            
+            // Broadcast restoration to all clients
+            await broadcastModeration(messageId, 'restore');
+            console.log(`Restoration broadcast completed for message ${messageId}`);
+          } catch (error) {
+            console.error(`Error restoring message ${messageId}:`, error);
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Failed to restore message. Please try again.'
+            }));
+            return;
+          }
           
           // Send confirmation to the client
           socket.send(JSON.stringify({
