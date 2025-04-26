@@ -360,22 +360,56 @@ function broadcastMessage(message: any) {
 }
 
 // Broadcast a moderation action to all connected clients
-function broadcastModeration(messageId: number, action: string) {
-  const now = new Date().toISOString();
-  
-  // Use Array.from to convert entries to an array for iteration
-  Array.from(clients.entries()).forEach(([socket, client]) => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: 'moderation',
-        action: action,
-        messageId: messageId,
-        timestamp: now,
-        moderatorId: client.userId,
-        moderatorName: '' // Will be filled by the client
-      }));
+// Get the message to be moderated, get the moderator user info, and broadcast to all clients
+async function broadcastModeration(messageId: number, action: string) {
+  try {
+    const now = new Date().toISOString();
+    
+    // Get the message to retrieve the moderator info
+    const [message] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, messageId));
+    
+    if (!message) {
+      console.error(`Cannot broadcast moderation: Message ${messageId} not found`);
+      return;
     }
-  });
+    
+    // Get moderator info
+    const moderatorId = message.deletedBy || 0;
+    let moderatorName = '';
+    
+    if (moderatorId) {
+      const [moderator] = await db
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.id, moderatorId));
+      
+      if (moderator) {
+        moderatorName = moderator.username;
+      }
+    }
+    
+    // Create the moderation message
+    const moderationMsg = JSON.stringify({
+      type: 'moderation',
+      action: action,
+      messageId: messageId,
+      timestamp: now,
+      moderatorId: moderatorId,
+      moderatorName: moderatorName
+    });
+    
+    // Broadcast to all clients
+    Array.from(clients.entries()).forEach(([socket, client]) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(moderationMsg);
+      }
+    });
+  } catch (error) {
+    console.error('Error broadcasting moderation:', error);
+  }
 }
 
 // Get recent messages
