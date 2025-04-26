@@ -377,6 +377,7 @@ export function Chat() {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           const response = JSON.parse(xhr.responseText);
+          console.log("Upload successful, server response:", response);
           
           // Send message with media to server
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -397,7 +398,20 @@ export function Chat() {
             description: "Media uploaded successfully.",
           });
         } else {
-          throw new Error(xhr.statusText);
+          console.error("Upload failed with status:", xhr.status, xhr.statusText);
+          // Try to parse the error response
+          let errorMessage = "Upload failed";
+          try {
+            const errorResponse = JSON.parse(xhr.responseText);
+            if (errorResponse.error) {
+              errorMessage = errorResponse.error;
+            }
+          } catch (e) {
+            // If we can't parse the error response, use the status text
+            errorMessage = xhr.statusText || "Unknown error";
+          }
+          setErrorMessage(errorMessage);
+          throw new Error(errorMessage);
         }
       });
       
@@ -408,6 +422,7 @@ export function Chat() {
       
       // Send request
       xhr.open('POST', '/api/chat/upload');
+      xhr.withCredentials = true; // Include credentials (cookies) for authentication
       xhr.send(formData);
       
     } catch (error) {

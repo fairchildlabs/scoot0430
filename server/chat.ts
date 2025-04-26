@@ -600,10 +600,10 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
       });
     }
     
-    // Check file size (10MB limit)
-    if (file.size > 10 * 1024 * 1024) {
+    // Check file size (1GB limit)
+    if (file.size > 1024 * 1024 * 1024) {
       return res.status(400).json({ 
-        error: 'File size exceeds the limit (10MB)' 
+        error: 'File size exceeds the limit (1GB)' 
       });
     }
     
