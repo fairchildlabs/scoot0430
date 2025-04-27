@@ -8,6 +8,7 @@ import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
 import UserManagementPage from "@/pages/user-management";
 import GamesPage from "@/pages/games-page";
+import ProfilePage from "@/pages/profile-page";
 import { AuthProvider } from "./hooks/use-auth";
 import { DatabaseRefreshProvider } from "./hooks/use-database-refresh";
 import { VersionProvider, useVersion } from "./hooks/use-version";
@@ -31,6 +32,7 @@ function VersionAwareRoutes() {
             </Suspense>
           )} 
         />
+        <ProtectedRoute path="/profile" component={ProfilePage} />
         <Route path="/auth" component={AuthPage} />
         <Route component={NotFound} />
       </Switch>
@@ -43,6 +45,7 @@ function VersionAwareRoutes() {
       <ProtectedRoute path="/" component={HomePage} />
       <ProtectedRoute path="/users" component={UserManagementPage} />
       <ProtectedRoute path="/games" component={GamesPage} />
+      <ProtectedRoute path="/profile" component={ProfilePage} />
       <ProtectedRoute path="/game-set/:id" component={HomePage} />
       <ProtectedRoute path="/home/:id" component={HomePage} />
       <Route path="/auth" component={AuthPage} />

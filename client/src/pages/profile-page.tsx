@@ -49,7 +49,7 @@ export default function ProfilePage() {
   });
 
   // Update form values when profile data is loaded
-  useState(() => {
+  React.useEffect(() => {
     if (profile) {
       form.reset({
         firstName: profile.firstName || "",
@@ -61,7 +61,7 @@ export default function ProfilePage() {
         birthDay: profile.birthDay,
       });
     }
-  });
+  }, [profile, form]);
 
   // Update profile mutation
   const updateProfileMutation = useMutation({
@@ -145,7 +145,7 @@ export default function ProfilePage() {
                 </p>
               </div>
               <Switch
-                checked={profile?.autoUp || false}
+                checked={profile?.autoup || false}
                 onCheckedChange={(checked) => toggleAutoupMutation.mutate(checked)}
                 disabled={toggleAutoupMutation.isPending}
               />

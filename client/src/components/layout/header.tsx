@@ -83,6 +83,11 @@ export function Header() {
                   <Link href="/">Home</Link>
                 </DropdownMenuItem>
                 
+                {/* Profile management for all users */}
+                <DropdownMenuItem asChild>
+                  <Link href="/profile">My Profile</Link>
+                </DropdownMenuItem>
+                
                 {/* Show Players and Games options only in Scoot(34) for admins */}
                 {(user.isEngineer || user.isRoot) && version !== "Scoot(1995)" && (
                   <>
