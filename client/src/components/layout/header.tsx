@@ -60,17 +60,6 @@ export function Header() {
 
         {user ? (
           <div className="flex items-center gap-4">
-            {/* Hide Players and Games buttons in Scoot(1995) */}
-            {(user.isEngineer || user.isRoot) && version !== "Scoot(1995)" && (
-              <>
-                <Link href="/users">
-                  <Button variant="outline">Players</Button>
-                </Link>
-                <Link href="/games">
-                  <Button variant="outline">Games</Button>
-                </Link>
-              </>
-            )}
             <div className="flex items-center gap-2">
               <span className="text-white opacity-70">{user.username}</span>
               <div className="hidden md:flex gap-1">
@@ -81,13 +70,40 @@ export function Header() {
                 ))}
               </div>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-            >
-              Logout
-            </Button>
+            
+            {/* Navigation Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-1">
+                  Menu
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href="/">Home</Link>
+                </DropdownMenuItem>
+                
+                {/* Show Players and Games options only in Scoot(34) for admins */}
+                {(user.isEngineer || user.isRoot) && version !== "Scoot(1995)" && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/users">Players</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/games">Games</Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                
+                <DropdownMenuItem 
+                  onSelect={() => logoutMutation.mutate()}
+                  disabled={logoutMutation.isPending}
+                >
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ) : (
           <Link href="/auth">
