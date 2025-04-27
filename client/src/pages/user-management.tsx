@@ -707,11 +707,10 @@ export default function UserManagementPage() {
          </CardHeader>
          <CardContent>
            <Tabs defaultValue="roster" className="space-y-4">
-             <TabsList>
-               <TabsTrigger value="roster">Today's Roster</TabsTrigger>
-               <TabsTrigger value="list">Player List</TabsTrigger>
-               <TabsTrigger value="create">Create New Player</TabsTrigger>
-               <TabsTrigger value="game-set">New Game Set</TabsTrigger>
+             <TabsList className="flex flex-col sm:flex-row w-full h-auto">
+               <TabsTrigger className="flex-1" value="roster">Today's Roster</TabsTrigger>
+               <TabsTrigger className="flex-1" value="list">Player List</TabsTrigger>
+               <TabsTrigger className="flex-1" value="create">Create New Player</TabsTrigger>
              </TabsList>
 
              <TabsContent value="roster">
@@ -1038,9 +1037,6 @@ export default function UserManagementPage() {
                    </Button>
                  </form>
                </Form>
-             </TabsContent>
-             <TabsContent value="game-set">
-               <NewGameSetForm />
              </TabsContent>
            </Tabs>
          </CardContent>
