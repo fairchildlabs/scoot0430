@@ -91,6 +91,56 @@ async function executeScootd(command: string): Promise<string> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Profile API routes
+  app.get('/api/profile', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+    
+    const userId = req.user!.id;
+    const userProfile = await storage.getUser(userId);
+    
+    if (!userProfile) {
+      return res.status(404).send('User not found');
+    }
+    
+    // Remove sensitive info
+    const { password, ...profileData } = userProfile;
+    res.json(profileData);
+  });
+  
+  app.patch('/api/profile', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+    
+    const userId = req.user!.id;
+    const updateData = req.body;
+    
+    // Ensure username cannot be changed
+    delete updateData.username;
+    
+    try {
+      const updatedUser = await storage.updateUser(userId, updateData);
+      const { password, ...userData } = updatedUser;
+      res.json(userData);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      res.status(500).send('Failed to update profile');
+    }
+  });
+  
+  app.post('/api/profile/autoup', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+    
+    const userId = req.user!.id;
+    const { enabled } = req.body;
+    
+    try {
+      const updatedUser = await storage.updateUser(userId, { autoUp: !!enabled });
+      const { password, ...userData } = updatedUser;
+      res.json(userData);
+    } catch (error) {
+      console.error('Error updating auto-up preference:', error);
+      res.status(500).send('Failed to update auto-up preference');
+    }
+  });
   setupAuth(app);
 
   app.get("/api/users", async (req, res) => {
