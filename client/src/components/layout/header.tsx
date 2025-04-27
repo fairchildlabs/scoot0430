@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 
 export function Header() {
   const { user, logoutMutation } = useAuth();
@@ -74,9 +74,8 @@ export function Header() {
             {/* Navigation Dropdown Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex items-center gap-1">
-                  Menu
-                  <ChevronDown className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="flex items-center">
+                  <Menu className="h-5 w-5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
