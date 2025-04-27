@@ -92,10 +92,16 @@ async function executeScootd(command: string): Promise<string> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup auth first - moved here from after profile routes
+  setupAuth(app);
+  
   // Profile API routes
   app.get('/api/profile', async (req: Request, res: Response, next) => {
     try {
-      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      if (!req.isAuthenticated()) {
+        console.log('GET /api/profile - Unauthorized request');
+        return res.status(401).send('Unauthorized');
+      }
       
       if (!req.user || typeof req.user.id !== 'number') {
         console.error('User object or user ID missing from authenticated request');
@@ -124,7 +130,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.patch('/api/profile', async (req: Request, res: Response, next) => {
     try {
-      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      if (!req.isAuthenticated()) {
+        console.log('PATCH /api/profile - Unauthorized request');
+        return res.status(401).send('Unauthorized');
+      }
       
       if (!req.user || typeof req.user.id !== 'number') {
         console.error('User object or user ID missing from authenticated request');
@@ -151,7 +160,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/profile/autoup', async (req: Request, res: Response, next) => {
     try {
-      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      if (!req.isAuthenticated()) {
+        console.log('POST /api/profile/autoup - Unauthorized request');
+        return res.status(401).send('Unauthorized');
+      }
       
       if (!req.user || typeof req.user.id !== 'number') {
         console.error('User object or user ID missing from authenticated request');
@@ -171,7 +183,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).send(`Failed to update auto-up preference: ${(error as Error).message}`);
     }
   });
-  setupAuth(app);
 
   app.get("/api/users", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
