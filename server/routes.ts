@@ -93,53 +93,82 @@ async function executeScootd(command: string): Promise<string> {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Profile API routes
-  app.get('/api/profile', async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
-    
-    const userId = req.user!.id;
-    const userProfile = await storage.getUser(userId);
-    
-    if (!userProfile) {
-      return res.status(404).send('User not found');
+  app.get('/api/profile', async (req: Request, res: Response, next) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      
+      if (!req.user || typeof req.user.id !== 'number') {
+        console.error('User object or user ID missing from authenticated request');
+        return res.status(400).send('Invalid user data');
+      }
+      
+      const userId = req.user.id;
+      console.log(`GET /api/profile - Fetching profile for user ID: ${userId}`);
+      
+      const userProfile = await storage.getUser(userId);
+      
+      if (!userProfile) {
+        console.log(`GET /api/profile - User not found: ${userId}`);
+        return res.status(404).send('User not found');
+      }
+      
+      // Remove sensitive info
+      const { password, ...profileData } = userProfile;
+      console.log(`GET /api/profile - Successfully retrieved profile for ${userProfile.username}`);
+      res.json(profileData);
+    } catch (error) {
+      console.error('GET /api/profile - Error:', error);
+      next(error);
     }
-    
-    // Remove sensitive info
-    const { password, ...profileData } = userProfile;
-    res.json(profileData);
   });
   
-  app.patch('/api/profile', async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
-    
-    const userId = req.user!.id;
-    const updateData = req.body;
-    
-    // Ensure username cannot be changed
-    delete updateData.username;
-    
+  app.patch('/api/profile', async (req: Request, res: Response, next) => {
     try {
+      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      
+      if (!req.user || typeof req.user.id !== 'number') {
+        console.error('User object or user ID missing from authenticated request');
+        return res.status(400).send('Invalid user data');
+      }
+      
+      const userId = req.user.id;
+      const updateData = req.body;
+      console.log(`PATCH /api/profile - Updating profile for user ID: ${userId}`, updateData);
+      
+      // Ensure username cannot be changed
+      delete updateData.username;
+      delete updateData.password;
+      
       const updatedUser = await storage.updateUser(userId, updateData);
       const { password, ...userData } = updatedUser;
+      console.log(`PATCH /api/profile - Successfully updated profile for ${updatedUser.username}`);
       res.json(userData);
     } catch (error) {
-      console.error('Error updating profile:', error);
-      res.status(500).send('Failed to update profile');
+      console.error('PATCH /api/profile - Error updating profile:', error);
+      res.status(500).send(`Failed to update profile: ${(error as Error).message}`);
     }
   });
   
-  app.post('/api/profile/autoup', async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
-    
-    const userId = req.user!.id;
-    const { enabled } = req.body;
-    
+  app.post('/api/profile/autoup', async (req: Request, res: Response, next) => {
     try {
+      if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
+      
+      if (!req.user || typeof req.user.id !== 'number') {
+        console.error('User object or user ID missing from authenticated request');
+        return res.status(400).send('Invalid user data');
+      }
+      
+      const userId = req.user.id;
+      const { enabled } = req.body;
+      console.log(`POST /api/profile/autoup - Setting autoup to ${!!enabled} for user ID: ${userId}`);
+      
       const updatedUser = await storage.updateUser(userId, { autoup: !!enabled });
       const { password, ...userData } = updatedUser;
+      console.log(`POST /api/profile/autoup - Successfully updated autoup preference for ${updatedUser.username}`);
       res.json(userData);
     } catch (error) {
-      console.error('Error updating auto-up preference:', error);
-      res.status(500).send('Failed to update auto-up preference');
+      console.error('POST /api/profile/autoup - Error updating autoup preference:', error);
+      res.status(500).send(`Failed to update auto-up preference: ${(error as Error).message}`);
     }
   });
   setupAuth(app);
