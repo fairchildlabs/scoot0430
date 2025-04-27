@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
@@ -143,14 +143,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   setupAuth(app);
 
-  app.get("/api/users", async (req, res) => {
+  app.get("/api/users", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
     const users = await storage.getAllUsers();
     res.json(users);
   });
 
-  app.patch("/api/users/:id", async (req, res) => {
+  app.patch("/api/users/:id", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
 
@@ -159,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(user);
   });
 
-  app.get("/api/checkins", async (req, res) => {
+  app.get("/api/checkins", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const checkinsData = await storage.getCheckins(34);
 
