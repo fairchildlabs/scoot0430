@@ -24,16 +24,21 @@ export default function ProfilePage() {
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ["/api/profile"],
     queryFn: async () => {
+      console.log("Fetching profile data...");
       try {
         const res = await apiRequest("GET", "/api/profile");
-        return res.json();
+        const profileData = await res.json();
+        console.log("Profile data received:", profileData);
+        return profileData;
       } catch (error) {
         console.error("Error fetching profile:", error);
         throw error;
       }
     },
     enabled: !!user,
-    retry: 1,
+    retry: 2,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 
   // Set up form for editing user profile
@@ -72,11 +77,20 @@ export default function ProfilePage() {
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: any) => {
+      console.log('Updating profile with data:', data);
       setIsSubmitting(true);
-      const res = await apiRequest("PATCH", "/api/profile", data);
-      return res.json();
+      try {
+        const res = await apiRequest("PATCH", "/api/profile", data);
+        const responseData = await res.json();
+        console.log('Profile update response:', responseData);
+        return responseData;
+      } catch (error) {
+        console.error('Profile update error:', error);
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (updatedProfile) => {
+      console.log('Profile updated successfully:', updatedProfile);
       setIsSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       toast({
@@ -86,10 +100,11 @@ export default function ProfilePage() {
       });
     },
     onError: (error: Error) => {
+      console.error('Profile update mutation error:', error);
       setIsSubmitting(false);
       toast({
         title: "Update failed",
-        description: error.message,
+        description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     },
@@ -98,21 +113,31 @@ export default function ProfilePage() {
   // Toggle autoup mutation
   const toggleAutoupMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
-      const res = await apiRequest("POST", "/api/profile/autoup", { enabled });
-      return res.json();
+      console.log(`Updating autoup preference to: ${enabled}`);
+      try {
+        const res = await apiRequest("POST", "/api/profile/autoup", { enabled });
+        const responseData = await res.json();
+        console.log('Autoup update response:', responseData);
+        return responseData;
+      } catch (error) {
+        console.error('Autoup update error:', error);
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (updatedProfile) => {
+      console.log('Autoup preference updated successfully:', updatedProfile);
       queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       toast({
         title: "Auto-up preference updated",
-        description: "Your auto-up preference has been updated.",
+        description: `Auto-up is now ${updatedProfile.autoup ? 'enabled' : 'disabled'}.`,
         variant: "default",
       });
     },
     onError: (error: Error) => {
+      console.error('Autoup update mutation error:', error);
       toast({
         title: "Update failed",
-        description: error.message,
+        description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     },
