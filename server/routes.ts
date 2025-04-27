@@ -133,7 +133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { enabled } = req.body;
     
     try {
-      const updatedUser = await storage.updateUser(userId, { autoUp: !!enabled });
+      const updatedUser = await storage.updateUser(userId, { autoup: !!enabled });
       const { password, ...userData } = updatedUser;
       res.json(userData);
     } catch (error) {
