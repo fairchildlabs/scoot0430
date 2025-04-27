@@ -1,4 +1,5 @@
-import type { Express, Request, Response } from "express";
+import type { Express } from "express";
+import type { Request, Response } from "express-serve-static-core";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
@@ -177,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(checkinsWithUserData);
   });
 
-  app.post("/api/checkins", async (req, res) => {
+  app.post("/api/checkins", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     // Only prevent duplicate check-ins if the user is checking themselves in
@@ -197,7 +198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(checkin);
   });
 
-  app.post("/api/checkins/clear", async (req, res) => {
+  app.post("/api/checkins/clear", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
 
@@ -222,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/checkins/check-in-all", async (req, res) => {
+  app.post("/api/checkins/check-in-all", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer && !req.user!.isRoot) return res.sendStatus(403);
 
