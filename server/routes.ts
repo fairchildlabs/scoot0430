@@ -12,6 +12,7 @@ import { cleanupDuplicateCheckins } from "./cleanup";
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { WebSocketServer } from 'ws';
+import { randomBytes, scrypt } from 'crypto';
 import { setupChatWebSocket, registerChatRoutes } from './chat';
 
 const execAsync = promisify(exec);
@@ -94,6 +95,59 @@ async function executeScootd(command: string): Promise<string> {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup auth first - moved here from after profile routes
   setupAuth(app);
+  
+  // Setup test user route (temporary route for testing)
+  app.get('/api/setup-test-user', async (req: Request, res: Response) => {
+    try {
+      console.log('Setting up test user for development');
+      // Check if test user already exists
+      const existingUser = await storage.getUserByUsername('testuser');
+      
+      if (existingUser) {
+        console.log('Test user already exists');
+        return res.json({ 
+          message: 'Test user already exists',
+          username: 'testuser',
+          password: 'password123'
+        });
+      }
+      
+      // Create scrypt hash of password
+      const salt = randomBytes(16).toString('hex');
+      const scryptAsync = promisify(scrypt);
+      const passwordBuffer = await scryptAsync('password123', salt, 64) as Buffer;
+      const hashedPassword = `${passwordBuffer.toString('hex')}.${salt}`;
+      
+      // Create test user
+      const user = await storage.createUser({
+        username: 'testuser',
+        password: hashedPassword,
+        firstName: 'Test',
+        lastName: 'User',
+        email: 'test@example.com',
+        isRoot: false,
+        isEngineer: true,
+        isPlayer: true,
+        isBank: false,
+        isBook: false,
+        isGym: false,
+        autoup: true,
+        birthYear: 1990
+      });
+      
+      console.log('Created test user:', { id: user.id, username: user.username });
+      
+      // Return success message
+      res.json({
+        message: 'Test user created successfully',
+        username: 'testuser',
+        password: 'password123'
+      });
+    } catch (error) {
+      console.error('Error creating test user:', error);
+      res.status(500).json({ error: 'Failed to create test user' });
+    }
+  });
   
   // Profile API routes
   app.get('/api/profile', async (req: Request, res: Response, next) => {
