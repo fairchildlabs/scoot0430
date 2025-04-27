@@ -638,7 +638,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
   const renderGameCard = (game: any, showScoreInputs = true) => (
     <Card key={game.id} className="bg-secondary/20">
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg flex items-center justify-between">
+        <CardTitle className="text-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <span>Game #{game.id} - Court {game.court}</span>
           <div className="flex items-center gap-2">
             <span className="text-sm font-normal text-muted-foreground">
@@ -657,7 +657,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Home Team */}
           <Card className="bg-white text-black">
             <CardHeader className="py-2">
