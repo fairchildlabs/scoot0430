@@ -261,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/games", async (req, res) => {
+  app.post("/api/games", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer) return res.sendStatus(403);
 
@@ -335,7 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/games/:id/score", async (req, res) => {
+  app.patch("/api/games/:id/score", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer) return res.sendStatus(403);
 
@@ -388,7 +388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/game-sets", async (req, res) => {
+  app.post("/api/game-sets", async (req: Request, res: Response) => {
     console.log('POST /api/game-sets - Request received');
     if (!req.isAuthenticated()) {
       console.log('POST /api/game-sets - Unauthorized');
@@ -412,19 +412,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/game-sets/active", async (req, res) => {
+  app.get("/api/game-sets/active", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const gameSet = await storage.getActiveGameSet();
     res.json(gameSet || null);
   });
 
-  app.get("/api/game-sets", async (req, res) => {
+  app.get("/api/game-sets", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const gameSets = await storage.getAllGameSets();
     res.json(gameSets);
   });
 
-  app.post("/api/game-sets/:id/deactivate", async (req, res) => {
+  app.post("/api/game-sets/:id/deactivate", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.user!.isEngineer) return res.sendStatus(403);
 
@@ -432,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendStatus(200);
   });
 
-  app.get("/api/game-sets/:id/log", async (req, res) => {
+  app.get("/api/game-sets/:id/log", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
