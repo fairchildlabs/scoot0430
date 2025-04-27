@@ -21,13 +21,19 @@ export default function ProfilePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get the user's profile data
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, error } = useQuery({
     queryKey: ["/api/profile"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/profile");
-      return res.json();
+      try {
+        const res = await apiRequest("GET", "/api/profile");
+        return res.json();
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        throw error;
+      }
     },
     enabled: !!user,
+    retry: 1,
   });
 
   // Set up form for editing user profile
@@ -134,6 +140,14 @@ export default function ProfilePage() {
               <div className="flex flex-col gap-4 items-center p-8">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
                 <p className="text-sm text-muted-foreground">Loading profile data...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col gap-4 items-center p-8 text-center">
+                <p className="text-destructive font-medium">Error loading profile</p>
+                <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Please try refreshing the page."}</p>
+                <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+                  Refresh Page
+                </Button>
               </div>
             ) : (
               <>
