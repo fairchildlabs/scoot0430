@@ -802,7 +802,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
           <div className="w-full max-w-2xl space-y-4">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                   <CardTitle>
                     {gameSetStatus ? (
                       <div className="flex flex-col space-y-1">
@@ -822,7 +822,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                     )}
                   </CardTitle>
                   {canEndGames && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {/* Display New Game buttons based on available courts */}
                       {(() => {
                         // Get total number of courts from game set info
@@ -856,7 +856,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                         
                         // If multiple courts are available, create a button for each option
                         return (
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             {/* Button for "Either Court" option */}
                             <Button 
                               onClick={() => setLocation(`/games?tab=new-game&courtMode=either`)}

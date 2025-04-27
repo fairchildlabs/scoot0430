@@ -73,7 +73,7 @@ export function Header() {
             )}
             <div className="flex items-center gap-2">
               <span className="text-white opacity-70">{user.username}</span>
-              <div className="flex gap-1">
+              <div className="hidden md:flex gap-1">
                 {getUserPermissions(user).map((permission) => (
                   <Badge key={permission} variant="outline" className="text-xs">
                     {permission}
