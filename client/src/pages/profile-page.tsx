@@ -194,6 +194,7 @@ export default function ProfilePage() {
                     checked={profile?.autoup || false}
                     onCheckedChange={(checked) => toggleAutoupMutation.mutate(checked)}
                     disabled={toggleAutoupMutation.isPending}
+                    className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-input border-2 border-muted-foreground"
                   />
                 </div>
 
