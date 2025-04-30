@@ -537,10 +537,10 @@ export default function GamesPage() {
         <Card>
           <CardContent className="p-6">
             <Tabs defaultValue={defaultTab}>
-              <TabsList className="mb-4">
-                <TabsTrigger value="new-game-set">New Game Set</TabsTrigger>
-                <TabsTrigger value="new-game">New Game</TabsTrigger>
-                <TabsTrigger value="all-game-sets">All Game Sets</TabsTrigger>
+              <TabsList className="flex flex-col w-full h-auto mb-4">
+                <TabsTrigger className="flex-1" value="new-game-set">New Game Set</TabsTrigger>
+                <TabsTrigger className="flex-1" value="new-game">New Game</TabsTrigger>
+                <TabsTrigger className="flex-1" value="all-game-sets">All Game Sets</TabsTrigger>
               </TabsList>
               <TabsContent value="new-game-set">
                 <NewGameSetForm />
