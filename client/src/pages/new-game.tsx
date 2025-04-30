@@ -211,6 +211,10 @@ const NewGamePage = () => {
           } else if (data && data.team1 && data.team2) {
             // Only set the game data if it has the expected structure
             setProposedGameData(data);
+          } else if (data && data.success === true) {
+            // If we received a success response but no team data, it's likely a "not enough players" scenario
+            setStatusMessage("Not enough players checked in for a game");
+            // Don't throw an error in this case - just show the status message
           } else {
             throw new Error("Received unexpected data format from server");
           }
