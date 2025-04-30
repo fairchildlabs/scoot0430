@@ -823,7 +823,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                   </CardTitle>
                   {canEndGames && (
                     <div className="flex flex-wrap gap-2">
-                      {/* Display New Game buttons based on available courts */}
+                      {/* Display New Game button based on available courts */}
                       {(() => {
                         // Get total number of courts from game set info
                         const totalCourts = gameSetStatus?.game_set_info?.number_of_courts || 2;
@@ -842,41 +842,32 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                           }
                         }
                         
-                        // If only one court is available
-                        if (availableCourts.length === 1) {
+                        // Single button with different text based on court availability
+                        if (availableCourts.length === 0) {
+                          // No courts available (shouldn't reach here due to earlier check)
+                          return null;
+                        } else if (availableCourts.length === totalCourts) {
+                          // All courts available - show simple "New Game" button
                           return (
-                            <Button 
-                              onClick={() => setLocation(`/games?tab=new-game&court=${availableCourts[0]}&courtMode=only`)}
-                              variant="outline"
-                            >
-                              New Game (ct {availableCourts[0]})
-                            </Button>
-                          );
-                        }
-                        
-                        // If multiple courts are available, create a button for each option
-                        return (
-                          <div className="flex flex-wrap gap-2">
-                            {/* Button for "Either Court" option */}
                             <Button 
                               onClick={() => setLocation(`/games?tab=new-game&courtMode=either`)}
                               variant="outline"
                             >
-                              New Game (Any Court)
+                              New Game
                             </Button>
-                            
-                            {/* Buttons for specific courts */}
-                            {availableCourts.map(court => (
-                              <Button 
-                                key={court}
-                                onClick={() => setLocation(`/games?tab=new-game&court=${court}&courtMode=only`)}
-                                variant="outline"
-                              >
-                                New Game (ct {court})
-                              </Button>
-                            ))}
-                          </div>
-                        );
+                          );
+                        } else {
+                          // Only specific court(s) available - show court number
+                          const court = availableCourts[0]; // Just use first available court
+                          return (
+                            <Button 
+                              onClick={() => setLocation(`/games?tab=new-game&court=${court}&courtMode=only`)}
+                              variant="outline"
+                            >
+                              New Game (ct{court})
+                            </Button>
+                          );
+                        }
                       })()}
                       {gameSetStatus && (
                         <Button 
