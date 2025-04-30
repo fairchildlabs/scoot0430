@@ -552,7 +552,8 @@ const NewGamePage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Responsive grid layout - columns on desktop, stack on mobile */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Home Team */}
                 <Card className="bg-black/20 border border-white">
                   <CardHeader>
