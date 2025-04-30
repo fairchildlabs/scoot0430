@@ -384,6 +384,17 @@ export default function UserManagementPage() {
  const checkedInUserIds = useMemo(() => {
    return new Set((checkins as any[] || []).map((checkin: any) => checkin.userId));
  }, [checkins]);
+ 
+ // Create a map of userId to queue position for checked-in users
+ const userQueuePositions = useMemo(() => {
+   const positionMap = new Map<number, number>();
+   (checkins as any[] || []).forEach((checkin: any) => {
+     if (checkin.userId && checkin.queuePosition) {
+       positionMap.set(checkin.userId, checkin.queuePosition);
+     }
+   });
+   return positionMap;
+ }, [checkins]);
 
  // Filter players first by isPlayer property
  const playerOnlyList = useMemo(() => {
@@ -817,7 +828,9 @@ export default function UserManagementPage() {
                                  disabled={checkinMutation.isPending}
                                  className={checkedInUserIds.has(player.id) ? "bg-white hover:bg-white/90 text-black" : ""}
                                >
-                                 {checkedInUserIds.has(player.id) ? "Check Out" : "Check In"}
+                                 {checkedInUserIds.has(player.id) 
+                                  ? `Check Out #${userQueuePositions.get(player.id) || '?'}` 
+                                  : "Check In"}
                                </Button>
                                <Button
                                  variant="outline"
