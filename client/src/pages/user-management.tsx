@@ -385,7 +385,12 @@ export default function UserManagementPage() {
    return new Set((checkins as any[] || []).map((checkin: any) => checkin.userId));
  }, [checkins]);
 
- const { items: sortedPlayers, requestSort, sortConfig } = useSortableData(players as any[]);
+ // Filter players first by isPlayer property
+ const playerOnlyList = useMemo(() => {
+   return (players as any[] || []).filter(player => player.isPlayer === true);
+ }, [players]);
+
+ const { items: sortedPlayers, requestSort, sortConfig } = useSortableData(playerOnlyList);
 
  const filteredPlayers = useMemo(() => {
    if (!searchQuery.trim()) return sortedPlayers;
