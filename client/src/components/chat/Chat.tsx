@@ -507,7 +507,7 @@ export function Chat() {
       <CardContent className="p-0">
         <div className="flex flex-col h-[70vh]">
           <div className="p-4 flex justify-between items-center border-b border-gray-800">
-            <h2 className="text-lg font-semibold">Community Chat</h2>
+            <h2 className="text-lg font-semibold">The Dream's Team</h2>
             {renderConnectionStatus()}
           </div>
           
