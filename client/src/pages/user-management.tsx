@@ -766,7 +766,7 @@ export default function UserManagementPage() {
                              {!sortConfig?.key && <CaretSortIcon className="ml-1" />}
                            </div>
                          </TableHead>
-                         <TableHead onClick={() => requestSort('firstName')} className="cursor-pointer">
+                         <TableHead onClick={() => requestSort('firstName')} className="hidden md:table-cell cursor-pointer">
                            <div className="flex items-center">
                              First Name
                              {sortConfig?.key === 'firstName' && (
@@ -775,7 +775,7 @@ export default function UserManagementPage() {
                              {!sortConfig?.key && <CaretSortIcon className="ml-1" />}
                            </div>
                          </TableHead>
-                         <TableHead onClick={() => requestSort('lastName')} className="cursor-pointer">
+                         <TableHead onClick={() => requestSort('lastName')} className="hidden md:table-cell cursor-pointer">
                            <div className="flex items-center">
                              Last Name
                              {sortConfig?.key === 'lastName' && (
@@ -784,7 +784,7 @@ export default function UserManagementPage() {
                              {!sortConfig?.key && <CaretSortIcon className="ml-1" />}
                            </div>
                          </TableHead>
-                         <TableHead onClick={() => requestSort('birthYear')} className="cursor-pointer">
+                         <TableHead onClick={() => requestSort('birthYear')} className="hidden md:table-cell cursor-pointer">
                            <div className="flex items-center">
                              Birth Year
                              {sortConfig?.key === 'birthYear' && (
@@ -800,9 +800,9 @@ export default function UserManagementPage() {
                        {filteredPlayers?.map((player: any) => (
                          <TableRow key={player.id}>
                            <TableCell>{player.username}</TableCell>
-                           <TableCell>{player.firstName || '-'}</TableCell>
-                           <TableCell>{player.lastName || '-'}</TableCell>
-                           <TableCell>{player.birthYear}</TableCell>
+                           <TableCell className="hidden md:table-cell">{player.firstName || '-'}</TableCell>
+                           <TableCell className="hidden md:table-cell">{player.lastName || '-'}</TableCell>
+                           <TableCell className="hidden md:table-cell">{player.birthYear}</TableCell>
                            <TableCell>
                              <div className="flex gap-2">
                                <Button
@@ -818,6 +818,7 @@ export default function UserManagementPage() {
                                  variant="outline"
                                  size="sm"
                                  onClick={() => setEditingUser(player)}
+                                 className="hidden sm:inline-flex"
                                >
                                  Edit
                                </Button>
@@ -827,7 +828,10 @@ export default function UserManagementPage() {
                        ))}
                        {(!filteredPlayers || filteredPlayers.length === 0) && (
                          <TableRow>
-                           <TableCell colSpan={5} className="text-center text-muted-foreground">
+                           <TableCell colSpan={2} className="text-center text-muted-foreground sm:hidden">
+                             No players found
+                           </TableCell>
+                           <TableCell colSpan={5} className="text-center text-muted-foreground hidden sm:table-cell">
                              No players found
                            </TableCell>
                          </TableRow>
