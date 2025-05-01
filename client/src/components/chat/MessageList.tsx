@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Trash2, RotateCcw } from "lucide-react";
 import { User } from "@shared/schema";
 import { MediaDisplay } from "./MediaDisplay";
+import { HandMetalIcon } from "./HandMetalIcon";
+import { cn } from "@/lib/utils";
 
 interface Message {
   id: number;
@@ -39,6 +41,8 @@ interface Message {
     thumbnailPath: string | null;
   };
   moderatorName?: string;
+  bumps?: number;
+  bumpedByCurrentUser?: boolean;
 }
 
 interface MessageListProps {
@@ -46,9 +50,10 @@ interface MessageListProps {
   currentUser: User;
   onModerate: (messageId: number, action: string) => void;
   onRestore: (messageId: number) => void;
+  onBump?: (messageId: number) => void;
 }
 
-export function MessageList({ messages, currentUser, onModerate, onRestore }: MessageListProps) {
+export function MessageList({ messages, currentUser, onModerate, onRestore, onBump }: MessageListProps) {
   const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
   
   const isModerator = currentUser.isEngineer || currentUser.isRoot;
@@ -70,6 +75,13 @@ export function MessageList({ messages, currentUser, onModerate, onRestore }: Me
   const handleRestore = (messageId: number) => {
     onRestore(messageId);
     setSelectedMessageId(null);
+  };
+  
+  // Handle message bump
+  const handleBump = (messageId: number) => {
+    if (onBump) {
+      onBump(messageId);
+    }
   };
   
   // Check if user can moderate a message
@@ -189,6 +201,26 @@ export function MessageList({ messages, currentUser, onModerate, onRestore }: Me
               )}
             </>
           </CardContent>
+          
+          {!message.isDeleted && (
+            <CardFooter className="py-2 px-4 border-t border-gray-800">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleBump(message.id)}
+                className={cn(
+                  "flex items-center space-x-1 text-gray-400 hover:text-yellow-500",
+                  message.bumpedByCurrentUser && "text-yellow-500"
+                )}
+              >
+                <HandMetalIcon 
+                  className="h-5 w-5" 
+                  filled={message.bumpedByCurrentUser}
+                />
+                <span>{message.bumps || 0}</span>
+              </Button>
+            </CardFooter>
+          )}
         </Card>
       ))}
     </div>
