@@ -8,7 +8,8 @@ import path from "path";
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(fileUpload({
+// Configure express-fileupload
+const fileUploadOptions = {
   limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB limit
   useTempFiles: true,
   tempFileDir: '/tmp/',
@@ -16,8 +17,21 @@ app.use(fileUpload({
   abortOnLimit: true,
   debug: true, // Enable debug for troubleshooting
   safeFileNames: true, // Strips special characters
-  preserveExtension: true // Keep file extensions
-}));
+  preserveExtension: true, // Keep file extensions
+  parseNested: false // Don't parse nested objects to improve performance
+};
+
+// Output deployment limits for debugging
+console.log("EXPRESS-FILEUPLOAD CONFIG:", {
+  maxFileSize: `${fileUploadOptions.limits.fileSize / (1024 * 1024)} MB`,
+  tempDir: fileUploadOptions.tempFileDir,
+  environment: process.env.NODE_ENV || 'development',
+  isReplit: process.env.REPL_ID ? true : false,
+  isDeployment: process.env.REPL_DEPLOYMENT ? true : false,
+  maxPayloadSize: `${parseInt(process.env.MAX_PAYLOAD_SIZE || '0') / (1024 * 1024) || 'unknown'} MB`
+});
+
+app.use(fileUpload(fileUploadOptions));
 
 // Serve uploaded files
 const uploadDir = path.join(process.cwd(), 'uploads');

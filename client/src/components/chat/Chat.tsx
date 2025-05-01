@@ -341,11 +341,27 @@ export function Chat() {
       return;
     }
     
-    // Check file size (1GB limit)
-    if (file.size > 1024 * 1024 * 1024) {
-      setErrorMessage("File size exceeds the 1GB limit.");
+    // Check file size (100MB deployment limit, 1GB development limit)
+    const isDeployment = window.location.hostname.includes('.replit.app');
+    const deploymentMaxSize = 100 * 1024 * 1024; // 100MB for deployment
+    const developmentMaxSize = 1024 * 1024 * 1024; // 1GB for development
+    const maxSize = isDeployment ? deploymentMaxSize : developmentMaxSize;
+    
+    if (file.size > maxSize) {
+      const sizeInMB = Math.round(file.size / (1024 * 1024));
+      const limitInMB = Math.round(maxSize / (1024 * 1024));
+      setErrorMessage(
+        `File size (${sizeInMB}MB) exceeds the ${limitInMB}MB limit for ${isDeployment ? 'deployment' : 'development'} environment.`
+      );
       return;
     }
+    
+    // Log upload environment for debugging
+    console.log("Upload environment:", {
+      isDeployment,
+      maxFileSize: `${Math.round(maxSize / (1024 * 1024))}MB`,
+      hostname: window.location.hostname
+    });
     
     setSelectedFile(file);
     setErrorMessage(null);
@@ -613,7 +629,10 @@ export function Chat() {
                         </div>
                         <h3 className="text-lg font-medium">No file selected</h3>
                         <p className="text-sm text-gray-400">
-                          Click 'Browse' to select an image or video (max 1GB)
+                          Click 'Browse' to select an image or video 
+                          {window.location.hostname.includes('.replit.app') 
+                            ? ' (max 100MB in deployment)' 
+                            : ' (max 1GB in development)'}
                         </p>
                         <Button 
                           onClick={handleOpenFilePicker}
