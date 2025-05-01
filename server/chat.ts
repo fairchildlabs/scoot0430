@@ -9,9 +9,11 @@ import {
   messages, 
   mediaAttachments, 
   moderationLogs, 
+  messageBumps,
   insertMessageSchema, 
   insertMediaAttachmentSchema, 
   insertModerationLogSchema,
+  insertMessageBumpSchema,
   users
 } from '@shared/schema';
 import { eq, and, desc, sql, asc } from 'drizzle-orm';
@@ -244,6 +246,54 @@ export function setupChatWebSocket(wss: WebSocketServer) {
               media: media
             }
           });
+        }
+        
+        // Handle message bump
+        else if (data.type === 'bump') {
+          const { messageId } = data;
+          if (!messageId) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message ID is required for bumping'
+            }));
+            return;
+          }
+          
+          // Get the message
+          const [message] = await db
+            .select()
+            .from(messages)
+            .where(eq(messages.id, messageId));
+          
+          if (!message) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Message not found'
+            }));
+            return;
+          }
+          
+          if (message.isDeleted) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              error: 'Cannot bump a deleted message'
+            }));
+            return;
+          }
+          
+          // Bump the message
+          const result = await bumpMessage(messageId, client.userId);
+          
+          // Broadcast bump update
+          await broadcastBumpUpdate(messageId, result.bumps);
+          
+          // Send confirmation to the client
+          socket.send(JSON.stringify({
+            type: 'success',
+            action: 'bump',
+            messageId,
+            bumps: result.bumps
+          }));
         }
         
         // Handle message deletion
@@ -1016,6 +1066,95 @@ export async function getDeletedMessages(req: Request, res: Response) {
   }
 }
 
+// Bump a message
+export async function bumpMessage(messageId: number, userId: number): Promise<{ bumps: number }> {
+  try {
+    // Check if this user has already bumped this message
+    const [existingBump] = await db
+      .select()
+      .from(messageBumps)
+      .where(
+        and(
+          eq(messageBumps.messageId, messageId),
+          eq(messageBumps.userId, userId)
+        )
+      );
+    
+    // If the user has already bumped this message, do nothing
+    if (existingBump) {
+      // Return the current bump count
+      const bumpCount = await db
+        .select({ count: sql`count(*)::int` })
+        .from(messageBumps)
+        .where(eq(messageBumps.messageId, messageId));
+      
+      return { bumps: bumpCount[0].count as number };
+    }
+    
+    // Add new bump
+    await db
+      .insert(messageBumps)
+      .values({
+        messageId,
+        userId
+      });
+    
+    // Get the updated bump count
+    const bumpCount = await db
+      .select({ count: sql`count(*)::int` })
+      .from(messageBumps)
+      .where(eq(messageBumps.messageId, messageId));
+    
+    return { bumps: bumpCount[0].count as number };
+  } catch (error) {
+    console.error('Error bumping message:', error);
+    throw error;
+  }
+}
+
+// Get message bumps
+export async function getMessageBumps(messageId: number): Promise<{ bumps: number, userIds: number[] }> {
+  try {
+    // Get all bumps for this message
+    const bumps = await db
+      .select()
+      .from(messageBumps)
+      .where(eq(messageBumps.messageId, messageId));
+    
+    // Extract user IDs
+    const userIds = bumps.map(bump => bump.userId);
+    
+    return { 
+      bumps: bumps.length,
+      userIds 
+    };
+  } catch (error) {
+    console.error('Error getting message bumps:', error);
+    throw error;
+  }
+}
+
+// Broadcast bump update
+async function broadcastBumpUpdate(messageId: number, bumpCount: number) {
+  try {
+    // Broadcast the bump update to all connected clients
+    const bumpMsg = JSON.stringify({
+      type: 'bump_update',
+      messageId,
+      bumps: bumpCount
+    });
+    
+    // Send to all clients
+    Array.from(clients.entries()).forEach(([socket, client]) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(bumpMsg);
+      }
+    });
+  } catch (error) {
+    console.error('Error broadcasting bump update:', error);
+  }
+}
+
 // Register chat routes
 export function registerChatRoutes(app: any) {
   // Get recent messages
@@ -1030,7 +1169,20 @@ export function registerChatRoutes(app: any) {
       console.log(`User ${req.user!.username} (${req.user!.id}) retrieving messages, includeDeleted: ${includeDeleted}`);
       
       const messages = await getRecentMessages(50, includeDeleted);
-      res.json(messages);
+      
+      // Add bump counts to each message
+      const messagesWithBumps = await Promise.all(
+        messages.map(async (message) => {
+          const bumpInfo = await getMessageBumps(message.id);
+          return {
+            ...message,
+            bumps: bumpInfo.bumps,
+            bumpedByCurrentUser: bumpInfo.userIds.includes(req.user!.id)
+          };
+        })
+      );
+      
+      res.json(messagesWithBumps);
     } catch (error) {
       console.error('Error getting messages:', error);
       res.status(500).json({ error: 'Server error' });
@@ -1045,6 +1197,73 @@ export function registerChatRoutes(app: any) {
   
   // Upload media
   app.post('/api/chat/upload', uploadMedia);
+  
+  // Bump a message
+  app.post('/api/chat/messages/:id/bump', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    try {
+      const messageId = parseInt(req.params.id);
+      
+      // Check if message exists and is not deleted
+      const [message] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, messageId));
+      
+      if (!message) {
+        return res.status(404).json({ error: 'Message not found' });
+      }
+      
+      if (message.isDeleted) {
+        return res.status(400).json({ error: 'Cannot bump a deleted message' });
+      }
+      
+      // Bump the message
+      const result = await bumpMessage(messageId, req.user!.id);
+      
+      // Broadcast bump update
+      await broadcastBumpUpdate(messageId, result.bumps);
+      
+      res.json(result);
+    } catch (error) {
+      console.error('Error bumping message:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+  
+  // Get message bumps
+  app.get('/api/chat/messages/:id/bumps', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    try {
+      const messageId = parseInt(req.params.id);
+      
+      // Check if message exists
+      const [message] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, messageId));
+      
+      if (!message) {
+        return res.status(404).json({ error: 'Message not found' });
+      }
+      
+      const bumpInfo = await getMessageBumps(messageId);
+      
+      res.json({
+        ...bumpInfo,
+        bumpedByCurrentUser: bumpInfo.userIds.includes(req.user!.id)
+      });
+    } catch (error) {
+      console.error('Error getting message bumps:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
   
   // Get deleted messages (root users only)
   app.get('/api/chat/moderation/deleted', getDeletedMessages);
