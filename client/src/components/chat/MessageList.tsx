@@ -96,7 +96,7 @@ export function MessageList({ messages, currentUser, onModerate, onRestore }: Me
         <Card 
           key={message.id} 
           className={`
-            ${message.isDeleted ? 'opacity-70 bg-gray-900' : 'bg-gray-900'} 
+            bg-gray-900
             ${message.userId === currentUser.id ? 'border-blue-800' : 'border-gray-800'}
           `}
         >
@@ -177,28 +177,17 @@ export function MessageList({ messages, currentUser, onModerate, onRestore }: Me
           </CardHeader>
           
           <CardContent className="py-2 px-4">
-            {message.isDeleted ? (
-              <div className="italic text-gray-400">
-                [Message removed by moderator]
-                {isRoot && message.moderatorName && (
-                  <span className="text-xs ml-2">
-                    (Deleted by {message.moderatorName} at {message.deletedAt && formatMessageDate(message.deletedAt)})
-                  </span>
-                )}
-              </div>
-            ) : (
-              <>
-                {message.content && (
-                  <p className="text-white whitespace-pre-wrap">{message.content}</p>
-                )}
-                
-                {message.hasMedia && message.media && (
-                  <div className="mt-2">
-                    <MediaDisplay media={message.media} />
-                  </div>
-                )}
-              </>
-            )}
+            <>
+              {message.content && (
+                <p className="text-white whitespace-pre-wrap">{message.content}</p>
+              )}
+              
+              {message.hasMedia && message.media && (
+                <div className="mt-2">
+                  <MediaDisplay media={message.media} />
+                </div>
+              )}
+            </>
           </CardContent>
         </Card>
       ))}

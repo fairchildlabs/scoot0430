@@ -780,12 +780,10 @@ export async function getMessageById(req: Request, res: Response) {
       return res.status(404).json({ error: 'Message not found' });
     }
     
-    // If message is deleted and user isn't root, don't show content
-    if (message.isDeleted && !req.user!.isRoot) {
-      return res.json({
-        ...message,
-        content: null
-      });
+    // For regular users, don't show deleted messages at all
+    const isAdmin = req.user!.isEngineer || req.user!.isRoot;
+    if (message.isDeleted && !isAdmin) {
+      return res.status(404).json({ error: 'Message not found' });
     }
     
     // Get username for the message
@@ -820,6 +818,12 @@ export async function getMediaByMessageId(req: Request, res: Response) {
       .where(eq(messages.id, messageId));
     
     if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    // For regular users, don't show media from deleted messages at all
+    const isAdmin = req.user!.isEngineer || req.user!.isRoot;
+    if (message.isDeleted && !isAdmin) {
       return res.status(404).json({ error: 'Message not found' });
     }
     
