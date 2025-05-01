@@ -547,6 +547,39 @@ export function Chat() {
     handleModerateMessage(messageId, "restore");
   };
   
+  // Handle message bump
+  const handleBumpMessage = (messageId: number) => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      toast({
+        title: "Connection Error",
+        description: "Not connected to chat server. Please refresh the page.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Send bump message to server via WebSocket
+    socketRef.current.send(JSON.stringify({
+      type: "bump",
+      messageId
+    }));
+    
+    // Optimistically update message with bumped state
+    setMessages(prevMessages => 
+      prevMessages.map(msg => {
+        if (msg.id === messageId) {
+          const newBumpCount = (msg.bumps || 0) + (msg.bumpedByCurrentUser ? 0 : 1);
+          return { 
+            ...msg, 
+            bumps: newBumpCount,
+            bumpedByCurrentUser: true 
+          };
+        }
+        return msg;
+      })
+    );
+  };
+  
   // Render connection status
   const renderConnectionStatus = () => {
     if (!user) return null;
@@ -614,6 +647,7 @@ export function Chat() {
                   currentUser={user}
                   onModerate={handleModerateMessage}
                   onRestore={handleRestoreMessage}
+                  onBump={handleBumpMessage}
                 />
                 <div ref={messagesEndRef} />
               </div>

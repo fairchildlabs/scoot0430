@@ -209,8 +209,8 @@ export function MessageList({ messages, currentUser, onModerate, onRestore, onBu
                 size="sm"
                 onClick={() => handleBump(message.id)}
                 className={cn(
-                  "flex items-center space-x-1 text-gray-400 hover:text-yellow-500",
-                  message.bumpedByCurrentUser && "text-yellow-500"
+                  "flex items-center space-x-1 text-gray-400 hover:text-amber-400",
+                  message.bumpedByCurrentUser && "text-amber-400"
                 )}
               >
                 <HandMetalIcon 
