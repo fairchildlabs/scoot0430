@@ -50,6 +50,8 @@ interface Message {
     thumbnailPath: string | null;
   };
   moderatorName?: string;
+  bumps?: number;
+  bumpedByCurrentUser?: boolean;
 }
 
 export function Chat() {
@@ -156,6 +158,18 @@ export function Chat() {
         // Remove the message from the list
         setMessages(prevMessages => 
           prevMessages.filter(msg => msg.id !== data.messageId)
+        );
+      }
+      else if (data.type === "bump_update") {
+        // Update bump count for a message
+        console.log(`Bump update received for message ${data.messageId}: ${data.bumps} bumps`);
+        
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === data.messageId 
+              ? { ...msg, bumps: data.bumps } 
+              : msg
+          )
         );
       } 
       else if (data.type === "error") {
