@@ -117,7 +117,8 @@ export function setupChatWebSocket(wss: WebSocketServer) {
             }));
             
             // Send recent messages to the new user
-            const recentMessages = await getRecentMessages();
+            // Only include deleted messages for admins
+            const recentMessages = await getRecentMessages(50, isUserAdmin);
             socket.send(JSON.stringify({
               type: 'messages',
               messages: recentMessages
@@ -487,15 +488,33 @@ async function broadcastModeration(messageId: number, action: string) {
 }
 
 // Get recent messages
-export async function getRecentMessages(limit = 50) {
+export async function getRecentMessages(limit = 50, includeDeleted = false) {
   try {
     // Get messages
-    const rawMessages = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.clubIndex, 1995))
+    let baseQuery;
+    
+    if (includeDeleted) {
+      // If we want to include deleted messages, just filter by clubIndex
+      baseQuery = db
+        .select()
+        .from(messages)
+        .where(eq(messages.clubIndex, 1995));
+    } else {
+      // If we don't want deleted messages, filter by both clubIndex and isDeleted
+      baseQuery = db
+        .select()
+        .from(messages)
+        .where(and(
+          eq(messages.clubIndex, 1995),
+          eq(messages.isDeleted, false)
+        ));
+    }
+    
+    const rawMessages = await baseQuery
       .orderBy(asc(messages.createdAt))
       .limit(limit);
+    
+    console.log(`Retrieved ${rawMessages.length} messages${includeDeleted ? ' (including deleted)' : ' (excluding deleted)'}`);
     
     // Get user information for each message
     const messagesWithUserInfo = await Promise.all(
