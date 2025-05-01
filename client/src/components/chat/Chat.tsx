@@ -341,11 +341,9 @@ export function Chat() {
       return;
     }
     
-    // Check file size (100MB deployment limit, 1GB development limit)
+    // Check file size (700MB limit as requested)
     const isDeployment = window.location.hostname.includes('.replit.app');
-    const deploymentMaxSize = 100 * 1024 * 1024; // 100MB for deployment
-    const developmentMaxSize = 1024 * 1024 * 1024; // 1GB for development
-    const maxSize = isDeployment ? deploymentMaxSize : developmentMaxSize;
+    const maxSize = 700 * 1024 * 1024; // 700MB limit for all environments
     
     if (file.size > maxSize) {
       const sizeInMB = Math.round(file.size / (1024 * 1024));
@@ -403,13 +401,19 @@ export function Chat() {
         }
       });
 
+      // Calculate timeout based on file size (longer timeout for larger files)
+      const fileSizeMB = selectedFile.size / (1024 * 1024);
+      // Base timeout is 5 minutes, but add more time for large files (1 min per 50MB)
+      const timeoutMinutes = Math.max(5, Math.ceil(fileSizeMB / 50) + 5);
+      console.log(`Setting upload timeout to ${timeoutMinutes} minutes for ${fileSizeMB.toFixed(2)}MB file`);
+      
       // Add timeout tracking
       const uploadTimeout = setTimeout(() => {
-        console.log("Upload timed out after 5 minutes");
+        console.log(`Upload timed out after ${timeoutMinutes} minutes`);
         xhr.abort();
-        setErrorMessage("Upload timed out. The file may be too large for the server to handle.");
+        setErrorMessage(`Upload timed out after ${timeoutMinutes} minutes. The file may be too large for the server to handle.`);
         setIsUploading(false);
-      }, 5 * 60 * 1000); // 5 minute timeout
+      }, timeoutMinutes * 60 * 1000);
       
       // Handle completion
       xhr.addEventListener('load', () => {
@@ -629,10 +633,7 @@ export function Chat() {
                         </div>
                         <h3 className="text-lg font-medium">No file selected</h3>
                         <p className="text-sm text-gray-400">
-                          Click 'Browse' to select an image or video 
-                          {window.location.hostname.includes('.replit.app') 
-                            ? ' (max 100MB in deployment)' 
-                            : ' (max 1GB in development)'}
+                          Click 'Browse' to select an image or video (max 700MB)
                         </p>
                         <Button 
                           onClick={handleOpenFilePicker}
@@ -654,9 +655,19 @@ export function Chat() {
                               style={{ width: `${uploadProgress}%` }}
                             />
                           </div>
-                          <div className="text-xs text-gray-400 text-right">
-                            {uploadProgress}%
+                          <div className="flex justify-between text-xs text-gray-400">
+                            <span>
+                              {selectedFile && 
+                                `${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB file`}
+                            </span>
+                            <span className="font-medium">{uploadProgress}%</span>
                           </div>
+                          {uploadProgress > 0 && uploadProgress < 100 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Large files (over 100MB) may take several minutes to upload.
+                              Please keep this window open until upload completes.
+                            </p>
+                          )}
                         </div>
                       )}
                       
