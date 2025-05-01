@@ -577,31 +577,52 @@ export async function createMessage({ userId, content, hasMedia = false, mediaId
 
 // Upload media
 export async function uploadMedia(req: FileUploadRequest, res: Response) {
+  console.log("Upload request received");
+  
   if (!req.isAuthenticated()) {
+    console.log("Upload rejected: User not authenticated");
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
+  console.log("Upload request files:", req.files ? 
+    `${Object.keys(req.files).length} files received` : 
+    "No files received");
+  
   if (!req.files || Object.keys(req.files).length === 0) {
+    console.log("Upload rejected: No files in request");
     return res.status(400).json({ error: 'No files were uploaded' });
   }
   
   try {
     // Make sure uploads directory exists
     const uploadsDir = await ensureUploadDirExists();
+    console.log("Upload directory confirmed:", uploadsDir);
     
     // Get the file
     const file = req.files.file as fileUpload.UploadedFile;
+    console.log("Upload file details:", {
+      name: file.name,
+      size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+      mimetype: file.mimetype,
+      tempFilePath: file.tempFilePath,
+      md5: file.md5
+    });
     
     // Check file type
     const fileType = file.mimetype.split('/')[0];
     if (fileType !== 'image' && fileType !== 'video') {
+      console.log(`Upload rejected: Unsupported file type: ${fileType}`);
       return res.status(400).json({ 
         error: 'Unsupported file type. Only images and videos are allowed.' 
       });
     }
     
     // Check file size (1GB limit)
+    const fileSizeMB = file.size / (1024 * 1024);
+    console.log(`File size: ${fileSizeMB.toFixed(2)} MB of 1024 MB limit`);
+    
     if (file.size > 1024 * 1024 * 1024) {
+      console.log(`Upload rejected: File size (${fileSizeMB.toFixed(2)} MB) exceeds 1GB limit`);
       return res.status(400).json({ 
         error: 'File size exceeds the limit (1GB)' 
       });
@@ -612,56 +633,102 @@ export async function uploadMedia(req: FileUploadRequest, res: Response) {
     const uniqueFileName = `${uuidv4()}${fileExt}`;
     const filePath = path.join(uploadsDir, uniqueFileName);
     
-    // Move the file to the uploads directory
-    await file.mv(filePath);
+    console.log(`Generated unique filename: ${uniqueFileName}`);
+    console.log(`Target file path: ${filePath}`);
     
-    // Create a thumbnail for videos (use placeholder for now)
-    let thumbnailPath = null;
-    if (fileType === 'video') {
-      thumbnailPath = '/video-placeholder.png';
+    try {
+      // Move the file to the uploads directory
+      console.log(`Moving temp file from ${file.tempFilePath} to ${filePath}`);
+      await file.mv(filePath);
+      console.log("File successfully moved to destination");
+      
+      // Verify the file was moved successfully
+      try {
+        const fileStats = await statAsync(filePath);
+        console.log(`Destination file verified, size: ${(fileStats.size / (1024 * 1024)).toFixed(2)} MB`);
+      } catch (error) {
+        const statErr = error as Error;
+        console.error(`Failed to verify destination file: ${statErr.message}`);
+      }
+      
+      // Create a thumbnail for videos (use placeholder for now)
+      let thumbnailPath = null;
+      if (fileType === 'video') {
+        thumbnailPath = '/video-placeholder.png';
+        console.log("Added video placeholder thumbnail");
+      }
+      
+      console.log("Creating message entry in database...");
+      // First create a message with hasMedia flag
+      const [message] = await db
+        .insert(messages)
+        .values({
+          userId: req.user!.id,
+          content: null,
+          hasMedia: true,
+          clubIndex: 1995, // Scoot(1995)
+          createdAt: new Date()
+        })
+        .returning();
+      console.log(`Message created with ID: ${message.id}`);
+      
+      console.log("Creating media attachment entry in database...");
+      // Then save media information to database with the message ID
+      const [media] = await db
+        .insert(mediaAttachments)
+        .values({
+          userId: req.user!.id,
+          messageId: message.id,
+          mediaType: fileType,
+          mediaPath: `/uploads/${uniqueFileName}`,
+          thumbnailPath,
+          createdAt: new Date()
+        })
+        .returning();
+      console.log(`Media attachment created with ID: ${media.id}`);
+      
+      console.log(`Updating message ${message.id} with media ID ${media.id}`);
+      // Update the message with the media ID
+      await db
+        .update(messages)
+        .set({ mediaId: media.id })
+        .where(eq(messages.id, message.id));
+      
+      console.log("Upload process completed successfully");
+      // Return the media information
+      res.json({ 
+        mediaId: media.id,
+        mediaType: media.mediaType,
+        mediaPath: media.mediaPath,
+        messageId: message.id
+      });
+    } catch (mvError) {
+      console.error("Error during file handling:", mvError);
+      // Try to provide more detailed error info
+      const errorDetails = mvError instanceof Error ? 
+        { message: mvError.message, stack: mvError.stack } : 
+        { raw: String(mvError) };
+      
+      console.error("Error details:", JSON.stringify(errorDetails, null, 2));
+      
+      res.status(500).json({ 
+        error: 'Failed to process uploaded file',
+        details: mvError instanceof Error ? mvError.message : 'Unknown error'
+      });
     }
-    
-    // First create a message with hasMedia flag
-    const [message] = await db
-      .insert(messages)
-      .values({
-        userId: req.user!.id,
-        content: null,
-        hasMedia: true,
-        clubIndex: 1995, // Scoot(1995)
-        createdAt: new Date()
-      })
-      .returning();
-    
-    // Then save media information to database with the message ID
-    const [media] = await db
-      .insert(mediaAttachments)
-      .values({
-        userId: req.user!.id,
-        messageId: message.id,
-        mediaType: fileType,
-        mediaPath: `/uploads/${uniqueFileName}`,
-        thumbnailPath,
-        createdAt: new Date()
-      })
-      .returning();
-    
-    // Update the message with the media ID
-    await db
-      .update(messages)
-      .set({ mediaId: media.id })
-      .where(eq(messages.id, message.id));
-    
-    // Return the media information
-    res.json({ 
-      mediaId: media.id,
-      mediaType: media.mediaType,
-      mediaPath: media.mediaPath,
-      messageId: message.id
-    });
   } catch (error) {
     console.error('Error uploading media:', error);
-    res.status(500).json({ error: 'Failed to upload media' });
+    // Try to provide more detailed error info
+    const errorDetails = error instanceof Error ? 
+      { message: error.message, stack: error.stack } : 
+      { raw: String(error) };
+    
+    console.error("Error details:", JSON.stringify(errorDetails, null, 2));
+    
+    res.status(500).json({ 
+      error: 'Failed to upload media',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }
 

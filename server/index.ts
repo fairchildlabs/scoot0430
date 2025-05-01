@@ -13,7 +13,10 @@ app.use(fileUpload({
   useTempFiles: true,
   tempFileDir: '/tmp/',
   createParentPath: true,
-  abortOnLimit: true
+  abortOnLimit: true,
+  debug: true, // Enable debug for troubleshooting
+  safeFileNames: true, // Strips special characters
+  preserveExtension: true // Keep file extensions
 }));
 
 // Serve uploaded files

@@ -356,6 +356,14 @@ export function Chat() {
   const handleUploadFile = async () => {
     if (!selectedFile) return;
     
+    // Log file details
+    console.log("Uploading file:", {
+      name: selectedFile.name,
+      type: selectedFile.type,
+      size: `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`,
+      lastModified: new Date(selectedFile.lastModified).toISOString()
+    });
+    
     setIsUploading(true);
     setUploadProgress(0);
     
@@ -365,40 +373,65 @@ export function Chat() {
       
       const xhr = new XMLHttpRequest();
       
-      // Track upload progress
+      // Track upload progress with more detailed logging
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100);
+          const loadedMB = (event.loaded / (1024 * 1024)).toFixed(2);
+          const totalMB = (event.total / (1024 * 1024)).toFixed(2);
+          
+          console.log(`Upload progress: ${progress}% (${loadedMB}MB / ${totalMB}MB)`);
           setUploadProgress(progress);
+        } else {
+          console.log("Upload progress: Not computable");
         }
       });
+
+      // Add timeout tracking
+      const uploadTimeout = setTimeout(() => {
+        console.log("Upload timed out after 5 minutes");
+        xhr.abort();
+        setErrorMessage("Upload timed out. The file may be too large for the server to handle.");
+        setIsUploading(false);
+      }, 5 * 60 * 1000); // 5 minute timeout
       
       // Handle completion
       xhr.addEventListener('load', () => {
+        clearTimeout(uploadTimeout);
+        
+        console.log("Upload completed with status:", xhr.status, xhr.statusText);
+        
         if (xhr.status >= 200 && xhr.status < 300) {
-          const response = JSON.parse(xhr.responseText);
-          console.log("Upload successful, server response:", response);
-          
-          // Send message with media to server
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-              type: "media_message",
-              mediaId: response.mediaId
-            }));
+          try {
+            const response = JSON.parse(xhr.responseText);
+            console.log("Upload successful, server response:", response);
+            
+            // Send message with media to server
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+              socketRef.current.send(JSON.stringify({
+                type: "media_message",
+                mediaId: response.mediaId
+              }));
+            }
+            
+            // Close dialog and reset
+            setMediaUploadOpen(false);
+            setSelectedFile(null);
+            setPreview(null);
+            setUploadProgress(0);
+            
+            toast({
+              title: "Success",
+              description: "Media uploaded successfully.",
+            });
+          } catch (parseError) {
+            console.error("Error parsing server response:", parseError);
+            setErrorMessage("Error processing server response");
           }
-          
-          // Close dialog and reset
-          setMediaUploadOpen(false);
-          setSelectedFile(null);
-          setPreview(null);
-          setUploadProgress(0);
-          
-          toast({
-            title: "Success",
-            description: "Media uploaded successfully.",
-          });
         } else {
           console.error("Upload failed with status:", xhr.status, xhr.statusText);
+          console.error("Server response:", xhr.responseText);
+          
           // Try to parse the error response
           let errorMessage = "Upload failed";
           try {
@@ -406,23 +439,38 @@ export function Chat() {
             if (errorResponse.error) {
               errorMessage = errorResponse.error;
             }
+            if (errorResponse.details) {
+              console.error("Error details:", errorResponse.details);
+              errorMessage += `: ${errorResponse.details}`;
+            }
           } catch (e) {
             // If we can't parse the error response, use the status text
             errorMessage = xhr.statusText || "Unknown error";
           }
           setErrorMessage(errorMessage);
-          throw new Error(errorMessage);
         }
       });
       
       // Handle errors
-      xhr.addEventListener('error', () => {
-        throw new Error('Network error occurred during upload');
+      xhr.addEventListener('error', (event) => {
+        clearTimeout(uploadTimeout);
+        console.error("XHR error during upload:", event);
+        setErrorMessage("Network error occurred during upload. Please check your connection and try again.");
+      });
+
+      // Handle aborted uploads
+      xhr.addEventListener('abort', () => {
+        clearTimeout(uploadTimeout);
+        console.log("Upload aborted");
+        setErrorMessage("Upload was cancelled.");
       });
       
       // Send request
+      console.log("Opening XHR connection to /api/chat/upload");
       xhr.open('POST', '/api/chat/upload');
       xhr.withCredentials = true; // Include credentials (cookies) for authentication
+      
+      console.log("Sending form data...");
       xhr.send(formData);
       
     } catch (error) {
