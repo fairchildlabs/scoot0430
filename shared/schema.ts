@@ -121,6 +121,14 @@ export const moderationLogs = pgTable("moderation_logs", {
   notes: text("notes"), // Optional notes from moderator
 });
 
+// Message bumps for tracking who bumped which messages
+export const messageBumps = pgTable("message_bumps", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messages.id),
+  userId: integer("user_id").notNull().references(() => users.id), // User who bumped the message
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
 // Define schemas after all tables are defined
 const userBaseSchema = createInsertSchema(users);
 
@@ -195,6 +203,12 @@ export const insertMediaAttachmentSchema = createInsertSchema(mediaAttachments).
 });
 
 export const insertModerationLogSchema = createInsertSchema(moderationLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
+// Message bump schema
+export const insertMessageBumpSchema = createInsertSchema(messageBumps).omit({
   id: true,
   timestamp: true,
 });
