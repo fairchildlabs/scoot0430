@@ -479,7 +479,17 @@ async function broadcastModeration(messageId: number, action: string) {
     // Broadcast to all clients
     Array.from(clients.entries()).forEach(([socket, client]) => {
       if (socket.readyState === WebSocket.OPEN) {
-        socket.send(moderationMsg);
+        // For delete actions, only send to admin users
+        // For restore actions, send to everyone
+        if (action === 'restore' || client.isAdmin) {
+          socket.send(moderationMsg);
+        } else if (action === 'delete') {
+          // For regular users, send a message to remove the deleted message from UI
+          socket.send(JSON.stringify({
+            type: 'remove_message',
+            messageId: messageId
+          }));
+        }
       }
     });
   } catch (error) {
@@ -1006,8 +1016,16 @@ export async function getDeletedMessages(req: Request, res: Response) {
 export function registerChatRoutes(app: any) {
   // Get recent messages
   app.get('/api/chat/messages', async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
     try {
-      const messages = await getRecentMessages();
+      // Only include deleted messages for admin/root users
+      const includeDeleted = req.user!.isRoot || req.user!.isEngineer;
+      console.log(`User ${req.user!.username} (${req.user!.id}) retrieving messages, includeDeleted: ${includeDeleted}`);
+      
+      const messages = await getRecentMessages(50, includeDeleted);
       res.json(messages);
     } catch (error) {
       console.error('Error getting messages:', error);

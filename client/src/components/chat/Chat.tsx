@@ -126,7 +126,7 @@ export function Chat() {
         setErrorMessage(null);
       } 
       else if (data.type === "moderation") {
-        // Message moderation (delete/restore)
+        // Message moderation (delete/restore) - only admins receive this
         console.log(`Moderation action received: ${data.action} for message ${data.messageId}`);
         
         if (data.action === "delete") {
@@ -148,6 +148,15 @@ export function Chat() {
             )
           );
         }
+      }
+      else if (data.type === "remove_message") {
+        // For regular users, completely remove the deleted message from the UI
+        console.log(`Remove message event received for message ${data.messageId}`);
+        
+        // Remove the message from the list
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== data.messageId)
+        );
       } 
       else if (data.type === "error") {
         // Error from server
