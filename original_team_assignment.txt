@@ -1,0 +1,43 @@
+        // Assign teams to players without a team assignment
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team == 0) {
+                // Assign to team with fewer players
+                if (home_team_count < 4) {
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
+                    home_team_count++;
+                } else {
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+                    away_team_count++;
+                }
+            } else if (swap) {
+                // If swap is true, reverse the existing team assignments
+                players[i].team = players[i].team == 1 ? 2 : 1;
+            }
+        }
+        
+        // If swap is true, we need to recount the teams after swapping
+        if (swap) {
+--
+        // Assign teams to players without a team assignment
+        for (int i = 0; i < 8; i++) {
+            if (players[i].team == 0) {
+                // Assign to team with fewer players
+                if (home_team_count < 4) {
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
+                    home_team_count++;
+                } else {
+                    // If swap is true, reverse the team assignment
+                    players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+                    away_team_count++;
+                }
+            } else if (swap) {
+                // If swap is true, reverse the existing team assignments
+                players[i].team = players[i].team == 1 ? 2 : 1;
+            }
+        }
+        
+        // If swap is true, we need to recount the teams after swapping
+        if (swap) {

@@ -5,6 +5,37 @@
 #include <stdbool.h>
 #include <libpq-fe.h>
 #include <time.h>
+/* Helper function to extract team designation from checkin type */
+char get_team_designation(const char* checkin_type) {
+    /* Find the last ":" character in the type string */
+    const char *last_colon = strrchr(checkin_type, ':');
+    if (last_colon != NULL && (last_colon[1] == 'H' || last_colon[1] == 'A')) {
+        return last_colon[1];
+    }
+    return '\0';
+}
+
+
+/* Helper function to extract team designation from checkin type */
+char get_team_designation(const char* checkin_type) {
+    /* Find the last ":" character in the type string */
+    const char *last_colon = strrchr(checkin_type, ':');
+    if (last_colon != NULL && (last_colon[1] == 'H' || last_colon[1] == 'A')) {
+        return last_colon[1];
+    }
+    return '\0';
+}
+
+
+/* Helper function to extract team designation from checkin type */ 
+char get_team_designation(const char* checkin_type) { 
+    /* Find the last ":" character in the type string */ 
+    const char *last_colon = strrchr(checkin_type, "":""); 
+    if (last_colon != NULL && (last_colon[1] == "H" || last_colon[1] == "A")) { 
+        return last_colon[1]; 
+    } 
+    return "\0"; 
+}
 
 /* Database connection string */
 #define MAX_CONN_INFO_LEN 256
@@ -1048,17 +1079,30 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                     players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
                     home_team_count++;
                 } else {
-                    // If swap is true, reverse the team assignment
-                    players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
-                    away_team_count++;
+            if (players[i].team == 0) { 
+                /* Parse checkin type for team designation */ 
+                const char *type = players[i].checkin_type; 
+                char team_designation = get_team_designation(type); 
+                
+                /* Assign team based on designation (considering swap if enabled) */ 
+                if (team_designation == "H") { 
+                    players[i].team = swap ? 2 : 1; /* HOME or swap to AWAY */ 
+                    home_team_count++; 
+                } else if (team_designation == "A") { 
+                    players[i].team = swap ? 1 : 2; /* AWAY or swap to HOME */ 
+                    away_team_count++; 
+                } else { 
+                    /* Default assignment (existing logic) for players without team designation */ 
+                    if (home_team_count < 4) { 
+                        /* If swap is true, reverse the team assignment */ 
+                        players[i].team = swap ? 2 : 1; /* HOME or AWAY based on swap */ 
+                        home_team_count++; 
+                    } else { 
+                        /* If swap is true, reverse the team assignment */ 
+                        players[i].team = swap ? 1 : 2; /* AWAY or HOME based on swap */ 
+                        away_team_count++; 
+                    } 
                 }
-            } else if (swap) {
-                // If swap is true, reverse the existing team assignments
-                players[i].team = players[i].team == 1 ? 2 : 1;
-            }
-        }
-        
-        // If swap is true, we need to recount the teams after swapping
         if (swap) {
             home_team_count = 0;
             away_team_count = 0;
@@ -1163,17 +1207,30 @@ void propose_game(PGconn *conn, int game_set_id, const char *court, const char *
                     away_team_count++;
                 }
             } else {
-                players[i].team = 0; // No team assignment yet
-            }
-        }
-        
-        // Assign teams to players without a team assignment
-        for (int i = 0; i < 8; i++) {
-            if (players[i].team == 0) {
-                // Assign to team with fewer players
-                if (home_team_count < 4) {
-                    // If swap is true, reverse the team assignment
-                    players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
+            if (players[i].team == 0) { 
+                /* Parse checkin type for team designation */ 
+                const char *type = players[i].checkin_type; 
+                char team_designation = get_team_designation(type); 
+                
+                /* Assign team based on designation (considering swap if enabled) */ 
+                if (team_designation == "H") { 
+                    players[i].team = swap ? 2 : 1; /* HOME or swap to AWAY */ 
+                    home_team_count++; 
+                } else if (team_designation == "A") { 
+                    players[i].team = swap ? 1 : 2; /* AWAY or swap to HOME */ 
+                    away_team_count++; 
+                } else { 
+                    /* Default assignment (existing logic) for players without team designation */ 
+                    if (home_team_count < 4) { 
+                        /* If swap is true, reverse the team assignment */ 
+                        players[i].team = swap ? 2 : 1; /* HOME or AWAY based on swap */ 
+                        home_team_count++; 
+                    } else { 
+                        /* If swap is true, reverse the team assignment */ 
+                        players[i].team = swap ? 1 : 2; /* AWAY or HOME based on swap */ 
+                        away_team_count++; 
+                    } 
+                }
                     home_team_count++;
                 } else {
                     // If swap is true, reverse the team assignment
@@ -2216,6 +2273,15 @@ bool team_compare_specific(PGconn *conn, int game1_id, int team1, int game2_id, 
     return same_team;
 }
 
+/* Helper function to extract team designation from checkin type */
+char get_team_designation(const char* checkin_type) {
+    /* Find the last ":" character in the type string */
+    const char *last_colon = strrchr(checkin_type, ':');
+    if (last_colon != NULL && (last_colon[1] == 'H' || last_colon[1] == 'A')) {
+        return last_colon[1];
+    }
+    return '\0';
+}
 
 
 /**

@@ -1,0 +1,78 @@
+TEAM ASSIGNMENT FIX FOR SCOOTD.C
+
+PURPOSE:
+This fix addresses an issue where the scootd.c program doesn't correctly parse 
+player checkin types with team designations (such as "loss_promoted:2:A" or "autoup:1:H").
+When these designations are present, the player should be assigned to the appropriate team 
+(A for AWAY team, H for HOME team).
+
+IMPLEMENTATION:
+
+Locate each team assignment block in the scootd.c file. There are at least two:
+- One around line 1042-1054
+- One around line 1170-1182
+
+In each location, replace the code that looks like this:
+
+```c
+// Assign teams to players without a team assignment
+for (int i = 0; i < 8; i++) {
+    if (players[i].team == 0) {
+        // Assign to team with fewer players
+        if (home_team_count < 4) {
+            // If swap is true, reverse the team assignment
+            players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
+            home_team_count++;
+        } else {
+            // If swap is true, reverse the team assignment
+            players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+            away_team_count++;
+        }
+```
+
+With this code:
+
+```c
+// Assign teams to players without a team assignment
+for (int i = 0; i < 8; i++) {
+    if (players[i].team == 0) {
+        // Parse checkin type for team designation
+        const char *type = players[i].checkin_type;
+        char team_designation = '\0';
+        
+        // Find the last ':' character in the type string
+        const char *last_colon = strrchr(type, ':');
+        if (last_colon != NULL && (last_colon[1] == 'H' || last_colon[1] == 'A')) {
+            team_designation = last_colon[1];
+        }
+        
+        // Assign team based on designation (considering swap if enabled)
+        if (team_designation == 'H') {
+            players[i].team = swap ? 2 : 1; // HOME or swap to AWAY
+            home_team_count++;
+        } else if (team_designation == 'A') {
+            players[i].team = swap ? 1 : 2; // AWAY or swap to HOME
+            away_team_count++;
+        } else {
+            // Default assignment (existing logic) for players without team designation
+            if (home_team_count < 4) {
+                // If swap is true, reverse the team assignment
+                players[i].team = swap ? 2 : 1; // HOME or AWAY based on swap
+                home_team_count++;
+            } else {
+                // If swap is true, reverse the team assignment
+                players[i].team = swap ? 1 : 2; // AWAY or HOME based on swap
+                away_team_count++;
+            }
+        }
+```
+
+Leave the rest of the function unchanged.
+
+TESTING:
+After making these changes, test the program by checking in players with different types:
+1. Manual check-ins (with no team designation)
+2. Players with "loss_promoted:2:A" type (should go to AWAY team)
+3. Players with "autoup:1:H" type (should go to HOME team)
+
+Verify that players are correctly assigned to teams based on their checkin type.
