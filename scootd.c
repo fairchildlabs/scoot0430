@@ -1180,14 +1180,17 @@ void scootd_output_games(int game_set_id, const char * court, PlayerInfo * playe
 
 
 
-void propose_game(PGconn * conn, int game_set_id, const char * court, const char * format, bool bCreate,
-	 const char * status_format, bool swap)
+
+
+
+void propose_game(PGconn * conn, int game_set_id, const char * court, const char * format, bool bCreate, 
+	const char * status_format, bool swap)
 {
 	char			query[4096];
 	PGresult *		res;
-	bool            bJson = false;
-	int verbose =  scoot_verbosity(SCOOT_DBGLVL_NONE,  CODE_PATH_SCOOTD); 
-		
+	bool			bJson = false;
+	int 			verbose = scoot_verbosity(SCOOT_DBGLVL_NONE, CODE_PATH_SCOOTD);
+
 	// Set default status_format to "none" if not provided
 	if (status_format == NULL)
 	{
@@ -1195,20 +1198,22 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	}
 	else if (strcmp(format, "json") == 0)
 	{
-		bJson = true;
+		bJson				= true;
 	}
-	SCOOT_DBG_PRINT(verbose, "propose_game(game_set_id = %d, court %s, format %s, bCreate = %d, status_format = %s, swap = %d)\n", game_set_id, court, format, bCreate, status_format, swap);
+
+	SCOOT_DBG_PRINT(verbose, "propose_game(game_set_id = %d, court %s, format %s, bCreate = %d, status_format = %s, swap = %d)\n",
+		 game_set_id, court, format, bCreate, status_format, swap);
 
 	// Get game set details
 	sprintf(query, 
 		"SELECT id, current_queue_position FROM game_sets WHERE id = %d", 
 		game_set_id);
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Game set not found", game_set_id, PGRES_TUPLES_OK)))
+	if (! (res = scootd_exec_query_and_status(conn, query, bJson, true, "Game set not found", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
-		
+
 	int 			current_position = atoi(PQgetvalue(res, 0, 1));
 
 	PQclear(res);
@@ -1220,7 +1225,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		game_set_id, court);
 
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Database error when checking active games", game_set_id, PGRES_TUPLES_OK)))
+	if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Database error when checking active games", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
@@ -1247,7 +1252,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	"LIMIT 8", 
 		game_set_id, current_position, current_position + 8);
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Error getting next-up players", game_set_id, PGRES_TUPLES_OK)))
+	if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Error getting next-up players", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
@@ -1264,99 +1269,98 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 
 
-		// First, collect all players and identify those with pre-assigned teams
-	
+	// First, collect all players and identify those with pre-assigned teams
+	PlayerInfo		players[8];
+	int 			home_team_count = 0;
+	int 			away_team_count = 0;
 
-		PlayerInfo		players[8];
-		int 			home_team_count = 0;
-		int 			away_team_count = 0;
+	// Collect player info and determine team assignments
+	for (int i = 0; i < 8; i++)
+	{
+		players[i].checkin_id = atoi(PQgetvalue(res, i, 0));
+		players[i].user_id	= atoi(PQgetvalue(res, i, 1));
+		players[i].username = PQgetvalue(res, i, 2);
+		players[i].birth_year_str = PQgetvalue(res, i, 3);
+		players[i].position = atoi(PQgetvalue(res, i, 4));
+		players[i].checkin_type = PQgetvalue(res, i, 5);
 
-		// Collect player info and determine team assignments
-		for (int i = 0; i < 8; i++)
+
+		// Check if team is already assigned from previous game
+		if (PQgetisnull(res, i, 6) == 0)
 		{
-			players[i].checkin_id = atoi(PQgetvalue(res, i, 0));
-			players[i].user_id	= atoi(PQgetvalue(res, i, 1));
-			players[i].username = PQgetvalue(res, i, 2);
-			players[i].birth_year_str = PQgetvalue(res, i, 3);
-			players[i].position = atoi(PQgetvalue(res, i, 4));
-			players[i].checkin_type = PQgetvalue(res, i, 5);
-			
+			players[i].team 	= atoi(PQgetvalue(res, i, 6));
 
-			// Check if team is already assigned from previous game
-			if (PQgetisnull(res, i, 6) == 0)
+			// Count players per team
+			if (players[i].team == 1)
 			{
-				players[i].team 	= atoi(PQgetvalue(res, i, 6));
+				home_team_count++;
+			}
+			else if (players[i].team == 2)
+			{
+				away_team_count++;
+			}
+		}
+		else 
+		{
+			players[i].team 	= 0;				// No team assignment yet
+		}
+	}
 
-				// Count players per team
-				if (players[i].team == 1)
-				{
-					home_team_count++;
-				}
-				else if (players[i].team == 2)
-				{
-					away_team_count++;
-				}
+	// Assign teams to players without a team assignment
+	for (int i = 0; i < 8; i++)
+	{
+		if (players[i].team == 0)
+		{
+			// Assign to team with fewer players
+			if (home_team_count < 4)
+			{
+				// If swap is true, reverse the team assignment
+				players[i].team 	= swap ? 2: 1;	// HOME or AWAY based on swap
+				home_team_count++;
 			}
 			else 
 			{
-				players[i].team 	= 0;			// No team assignment yet
+				// If swap is true, reverse the team assignment
+				players[i].team 	= swap ? 1: 2;	// AWAY or HOME based on swap
+				away_team_count++;
 			}
 		}
+		else if (swap)
+		{
+			// If swap is true, reverse the existing team assignments
+			players[i].team 	= players[i].team == 1 ? 2: 1;
+		}
+	}
 
-		// Assign teams to players without a team assignment
+	// If swap is true, we need to recount the teams after swapping
+	if (swap)
+	{
+		home_team_count 	= 0;
+		away_team_count 	= 0;
+
 		for (int i = 0; i < 8; i++)
 		{
-			if (players[i].team == 0)
+			if (players[i].team == 1)
 			{
-				// Assign to team with fewer players
-				if (home_team_count < 4)
-				{
-					// If swap is true, reverse the team assignment
-					players[i].team 	= swap ? 2: 1; // HOME or AWAY based on swap
-					home_team_count++;
-				}
-				else 
-				{
-					// If swap is true, reverse the team assignment
-					players[i].team 	= swap ? 1: 2; // AWAY or HOME based on swap
-					away_team_count++;
-				}
+				home_team_count++;
 			}
-			else if (swap)
+			else if (players[i].team == 2)
 			{
-				// If swap is true, reverse the existing team assignments
-				players[i].team 	= players[i].team == 1 ? 2: 1;
+				away_team_count++;
 			}
 		}
+	}
 
-		// If swap is true, we need to recount the teams after swapping
-		if (swap)
-		{
-			home_team_count 	= 0;
-			away_team_count 	= 0;
+	scootd_output_games(game_set_id, court, players, 8, bJson);
 
-			for (int i = 0; i < 8; i++)
-			{
-				if (players[i].team == 1)
-				{
-					home_team_count++;
-				}
-				else if (players[i].team == 2)
-				{
-					away_team_count++;
-				}
-			}
-		}
-		
-		scootd_output_games(game_set_id, court, players, 8, bJson);
-		
 	// Create the game if bCreate is true
 	if (bCreate)
 	{
 		PGresult *		insert_res;
 		PGresult *		update_res;
-		char insert_query[256];
-		char update_query[256];
+		char			insert_query[256];
+		char			update_query[256];
+
 		// Start a transaction
 		PQclear(res);
 		res 				= PQexec(conn, "BEGIN");
@@ -1377,7 +1381,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"VALUES (%d, '%s', 0, 0, 'active', NOW()) RETURNING id", 
 			game_set_id, court);
 
-		if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Database error: Could not create game", game_set_id, PGRES_TUPLES_OK)))
+		if (! (res = scootd_exec_query_and_status(conn, query, bJson, true, "Database error: Could not create game", game_set_id, PGRES_TUPLES_OK)))
 		{
 			PQclear(res);
 			PQexec(conn, "ROLLBACK");
@@ -1393,54 +1397,28 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		// Assign teams to players respecting previous assignments
 		for (int i = 0; i < 8; i++)
 		{
-		//	int 			team_to_assign;
-		
-
+			//	int 			team_to_assign;
 			sprintf(update_query, 
 				"UPDATE checkins SET game_id = %d, team = %d "
-			    "WHERE id = %d", 
-				          game_id, 
-				          players[i].team, 
-				          players[i].checkin_id);
+			"WHERE id = %d", 
+				game_id, 
+				players[i].team, 
+				players[i].checkin_id);
 
 
-			SCOOT_DBG_PRINT(verbose, "%d] uid = %d name = %s position = %d team %d\n", i, players[i].user_id, players[i].username, players[i].position, players[i].team);
+			SCOOT_DBG_PRINT(verbose, "%d] uid = %d name = %s position = %d team %d\n", i, players[i].user_id,
+				 players[i].username, players[i].position, players[i].team);
 
 
-#if 1
-			if(!(update_res = scootd_exec_query_and_status(conn, update_query, bJson, false,  "Error: Could not assign player to game", game_set_id, PGRES_COMMAND_OK)))
-				{
-					PQclear(res);
-					PQexec(conn, "ROLLBACK");
-					return;
-			
-				}
-
-#else
-			PGresult *		update_res = PQexec(conn, update_query);
-
-			if (PQresultStatus(update_res) != PGRES_COMMAND_OK)
+			if (! (update_res = scootd_exec_query_and_status(conn, update_query, bJson, false, "Error: Could not assign player to game", game_set_id, PGRES_COMMAND_OK)))
 			{
-				fprintf(stderr, "Error assigning player %s to game: %s", players[i].username, PQerrorMessage(conn));
-				PQclear(update_res);
 				PQclear(res);
 				PQexec(conn, "ROLLBACK");
-
-				if (strcmp(format, "json") == 0)
-				{
-					printf("{\n");
-					printf("  \"status\": \"ERROR\",\n");
-					printf("  \"message\": \"Database error: Could not assign player to game\"\n");
-					printf("}\n");
-				}
-				else 
-				{
-					printf("Error: Could not assign player to game\n");
-				}
-
 				return;
+
 			}
-#endif
+
+
 
 			PQclear(update_res);
 
@@ -1457,52 +1435,23 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			}
 
 			// Insert into game_players
-
-
-
 			sprintf(insert_query, 
 				"INSERT INTO game_players (game_id, user_id, team, relative_position) "
 			"VALUES (%d, %d, %d, %d)", 
 				game_id, players[i].user_id, players[i].team, relative_pos);
 
-#if 1
-			if(!(insert_res = scootd_exec_query_and_status(conn, insert_query, bJson, false,  "Error: Could not create game_player record", game_set_id, PGRES_COMMAND_OK)))
-				{
-					PQclear(insert_res);
-					PQexec(conn, "ROLLBACK");
-					return;
-			
-				}
-
-#else
-
-			PGresult *		insert_res = PQexec(conn, insert_query);
-
-			if (PQresultStatus(insert_res) != PGRES_COMMAND_OK)
+			if (! (insert_res = scootd_exec_query_and_status(conn, insert_query, bJson, false, "Error: Could not create game_player record", game_set_id, PGRES_COMMAND_OK)))
 			{
-				fprintf(stderr, "Error creating game_player record: %s", PQerrorMessage(conn));
 				PQclear(insert_res);
-				PQclear(res);
 				PQexec(conn, "ROLLBACK");
-
-				if (strcmp(format, "json") == 0)
-				{
-					printf("{\n");
-					printf("  \"status\": \"ERROR\",\n");
-					printf("  \"message\": \"Database error: Could not create game_player record\"\n");
-					printf("}\n");
-				}
-				else 
-				{
-					printf("Error: Could not create game_player record\n");
-				}
-
 				return;
+
 			}
-#endif
+
 
 			PQclear(insert_res);
 		}
+
 		// Set is_active = FALSE for players in the new game
 		//PQclear(res);
 		sprintf(query, 
@@ -1512,39 +1461,14 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			game_id);
 
 
-#if 1
-		if(!(res = scootd_exec_query_and_status(conn, query, bJson, false,  "Error: Could not deactivate player check-ins", game_set_id, PGRES_TUPLES_OK)))
-			{
-				PQclear(res);
-				PQexec(conn, "ROLLBACK");
-				return;
-		
-			}
-
-#else
-		res 				= PQexec(conn, query);
-
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Error: Could not deactivate player check-ins", game_set_id, PGRES_TUPLES_OK)))
 		{
-			fprintf(stderr, "Error deactivating player check-ins: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQexec(conn, "ROLLBACK");
-
-			if (strcmp(format, "json") == 0)
-			{
-				printf("{\n");
-				printf("  \"status\": \"ERROR\",\n");
-				printf("  \"message\": \"Database error: Could not deactivate player check-ins\"\n");
-				printf("}\n");
-			}
-			else 
-			{
-				printf("Error: Could not deactivate player check-ins\n");
-			}
-
 			return;
+
 		}
-#endif
+
 
 		// Get the players_per_team value from game_set
 		int 			players_per_team = 4;		// Default value
@@ -1576,39 +1500,15 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"RETURNING current_queue_position, queue_next_up", 
 			2 * players_per_team,					// Increment current_queue_position for both teams
 		game_set_id);
-#if 1
-		if(!(res = scootd_exec_query_and_status(conn, query, bJson, false,  "Error: Could not update queue positions", game_set_id, PGRES_TUPLES_OK)))
-			{
-				PQclear(res);
-				PQexec(conn, "ROLLBACK");
-				return;
-		
-			}
 
-#else
-		res 				= PQexec(conn, query);
-
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Error: Could not update queue positions", game_set_id, PGRES_TUPLES_OK)))
 		{
-			fprintf(stderr, "Error updating queue positions: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQexec(conn, "ROLLBACK");
-
-			if (strcmp(format, "json") == 0)
-			{
-				printf("{\n");
-				printf("  \"status\": \"ERROR\",\n");
-				printf("  \"message\": \"Database error: Could not update queue positions\"\n");
-				printf("}\n");
-			}
-			else 
-			{
-				printf("Error: Could not update queue positions\n");
-			}
-
 			return;
+
 		}
-#endif
+
 
 		// Commit the transaction
 		PQclear(res);
@@ -1616,32 +1516,12 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-#if 1
 			scood_db_err(conn, query, res, "Error: Transaction failed", player_count, true, bJson);
 			PQexec(conn, "ROLLBACK");
-#else
-			fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
-			PQclear(res);
-			PQexec(conn, "ROLLBACK");
-
-			if (strcmp(format, "json") == 0)
-			{
-				printf("{\n");
-				printf("  \"status\": \"ERROR\",\n");
-				printf("  \"message\": \"Database error: Transaction failed\"\n");
-				printf("}\n");
-			}
-			else 
-			{
-				printf("Error: Transaction failed\n");
-			}
-
-#endif
 
 			return;
 		}
 
-#if 1
 		if (bJson)
 		{
 			printf("{\n");
@@ -1656,21 +1536,6 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			printf("Game created successfully (Game ID: %d, Court: %s)\n", game_id, court);
 		}
 
-#else
-		if (strcmp(format, "json") == 0)
-		{
-			printf("{\n");
-			printf("  \"status\": \"SUCCESS\",\n");
-			printf("  \"message\": \"Game created successfully\",\n");
-			printf("  \"game_id\": %d,\n", game_id);
-			printf("  \"court\": \"%s\"\n", court);
-			printf("}\n");
-		}
-		else 
-		{
-			printf("Game created successfully (Game ID: %d, Court: %s)\n", game_id, court);
-		}
-#endif
 
 	}
 	else 
@@ -1678,6 +1543,8 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		PQclear(res);
 	}
 }
+
+
 #else
 
 void propose_game(PGconn * conn, int game_set_id, const char * court, const char * format, bool bCreate,
