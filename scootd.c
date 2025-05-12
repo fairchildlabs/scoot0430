@@ -30,6 +30,11 @@
 
 static uint64_t gCodePathVerbosity = 0;
 
+#define SCOOT_NO_TEAM 0 
+#define SCOOT_HOME 1
+#define SCOOT_AWAY 2 
+
+
 
 static inline void scoot_dbg_printf(int verbose, const char *fmt, ...)
 {
@@ -90,7 +95,8 @@ static inline int scoot_verbosity(int local, uint64_t code_path)
  * @param checkin_type The checkin type string to parse
  * @return 'H' for HOME team, 'A' for AWAY team, '\0' if no designation
  */
-char get_team_designation(const char* checkin_type) {
+char get_team_designation(const char* checkin_type) 
+{
     // Find the last ':' character in the type string
     const char *last_colon = strrchr(checkin_type, ':');
     if (last_colon != NULL && (last_colon[1] == 'H' || last_colon[1] == 'A')) {
@@ -992,6 +998,7 @@ typedef struct
 		const char *	checkin_type;
 		int 			team;					// 0 = unassigned, 1 = HOME, 2 = AWAY
 		int             checkin_id;
+		int             promotion_team;
 	} PlayerInfo;
 
 void scood_db_err(PGconn * conn, char *query, PGresult *	res, char * szErrContext, int iValErrContext, bool bClear, bool bJson )
@@ -1180,17 +1187,54 @@ void scootd_output_games(int game_set_id, const char * court, PlayerInfo * playe
 
 
 
+int get_promoted_team(const char *checkin_type)
+{
+	int pt = 0;
+	char ct = 0;
+
+
+	if(NULL == strstr(checkin_type, "promoted"))
+	{
+
+	}
+	else
+	{	
+	 	ct = get_team_designation((const char *)checkin_type);
+	}
+	
+	switch(ct)
+	{
+		case 'H':
+		 	pt = 1;
+		break;
+		
+		case 'A':
+		 	pt = 2;
+		break;
+
+		default:
+			break;
+	}
+
+	return pt;
+}
+
+	
 
 
 
 void propose_game(PGconn * conn, int game_set_id, const char * court, const char * format, bool bCreate, 
 	const char * status_format, bool swap)
 {
-	char			query[4096];
+	// Get the players_per_team value from game_set
+	int 			players_per_team = 4;		// Default value
+	int             players_per_game;
+	char			query[1024];
 	PGresult *		res;
 	bool			bJson = false;
 	int 			verbose = scoot_verbosity(SCOOT_DBGLVL_NONE, CODE_PATH_SCOOTD);
-
+	int i;
+	
 	// Set default status_format to "none" if not provided
 	if (status_format == NULL)
 	{
@@ -1203,6 +1247,26 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 	SCOOT_DBG_PRINT(verbose, "propose_game(game_set_id = %d, court %s, format %s, bCreate = %d, status_format = %s, swap = %d)\n",
 		 game_set_id, court, format, bCreate, status_format, swap);
+
+
+	
+	sprintf(query, 
+		"SELECT players_per_team FROM game_sets WHERE id = %d", 
+		game_set_id);
+	
+	
+	res 				= PQexec(conn, query);
+	
+	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
+	{
+		players_per_team	= atoi(PQgetvalue(res, 0, 0));
+	}
+	players_per_game  = players_per_team * 2;
+	PQclear(res);
+		
+
+
+
 
 	// Get game set details
 	sprintf(query, 
@@ -1248,9 +1312,9 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	"AND c.game_set_id = %d "
 	"AND c.game_id IS NULL "
 	"AND c.queue_position >= %d AND c.queue_position <= %d "
-	"ORDER BY c.team NULLS LAST, c.queue_position ASC "
-	"LIMIT 8", 
-		game_set_id, current_position, current_position + 8);
+	"ORDER BY c.queue_position ASC "
+	"LIMIT %d", 
+		game_set_id, current_position, current_position + 8, players_per_game);
 
 	if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Error getting next-up players", game_set_id, PGRES_TUPLES_OK)))
 	{
@@ -1259,15 +1323,12 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 	int 			player_count = PQntuples(res);
 
-	if (player_count < 8)
+	if (player_count < players_per_game)
 	{
-		scood_db_err(conn, query, res, "Not Enough players for a game (need 8, have:", player_count, true, bJson);
+		scood_db_err(conn, query, res, "Not Enough players for a game (have:", player_count, true, bJson);
 
 		return;
 	}
-
-
-
 
 	// First, collect all players and identify those with pre-assigned teams
 	PlayerInfo		players[8];
@@ -1275,8 +1336,9 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	int 			away_team_count = 0;
 
 	// Collect player info and determine team assignments
-	for (int i = 0; i < 8; i++)
+	for (i = 0; i < players_per_game; i++)
 	{
+		players[i].team 	= SCOOT_NO_TEAM;				// No team assignment yet
 		players[i].checkin_id = atoi(PQgetvalue(res, i, 0));
 		players[i].user_id	= atoi(PQgetvalue(res, i, 1));
 		players[i].username = PQgetvalue(res, i, 2);
@@ -1284,70 +1346,74 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		players[i].position = atoi(PQgetvalue(res, i, 4));
 		players[i].checkin_type = PQgetvalue(res, i, 5);
 
+		players[i].promotion_team = get_promoted_team(players[i].checkin_type);
+			
 
-		// Check if team is already assigned from previous game
-		if (PQgetisnull(res, i, 6) == 0)
-		{
-			players[i].team 	= atoi(PQgetvalue(res, i, 6));
+		SCOOT_DBG_PRINT(SCOOT_DBGLVL_ERROR, "%d] uid = %d name = %s position = %d team %d type = %s promotion_team = %d\n", i, players[i].user_id,
+			 players[i].username, players[i].position, players[i].team, players[i].checkin_type, players[i].promotion_team);
 
-			// Count players per team
-			if (players[i].team == 1)
-			{
-				home_team_count++;
-			}
-			else if (players[i].team == 2)
-			{
-				away_team_count++;
-			}
-		}
-		else 
-		{
-			players[i].team 	= 0;				// No team assignment yet
-		}
+
 	}
 
 	// Assign teams to players without a team assignment
-	for (int i = 0; i < 8; i++)
+	for (i = 0; i < players_per_game; i++)
 	{
-		if (players[i].team == 0)
+
+		if ((home_team_count < players_per_team) && (players[i].promotion_team != SCOOT_AWAY))
 		{
-			// Assign to team with fewer players
-			if (home_team_count < 4)
-			{
-				// If swap is true, reverse the team assignment
-				players[i].team 	= swap ? 2: 1;	// HOME or AWAY based on swap
-				home_team_count++;
-			}
-			else 
-			{
-				// If swap is true, reverse the team assignment
-				players[i].team 	= swap ? 1: 2;	// AWAY or HOME based on swap
-				away_team_count++;
-			}
+			players[i].team = SCOOT_HOME;
+			home_team_count++;
 		}
-		else if (swap)
+		else if((away_team_count < players_per_team) && (players[i].promotion_team != SCOOT_HOME))
 		{
-			// If swap is true, reverse the existing team assignments
-			players[i].team 	= players[i].team == 1 ? 2: 1;
+
+			players[i].team = SCOOT_AWAY;
+			away_team_count++;
 		}
+
 	}
+
+	i = 0;
+	while((home_team_count < players_per_team) && ( i < players_per_game))
+	{
+		if(SCOOT_NO_TEAM == players[i].team)
+		{
+			players[i].team = SCOOT_HOME;
+			home_team_count++;
+		}
+
+	}
+
+	i = 0;
+	while((away_team_count < players_per_team) && ( i < players_per_game))
+	{
+		if(SCOOT_NO_TEAM == players[i].team)
+		{
+			players[i].team = SCOOT_AWAY;
+			away_team_count++;
+		}
+
+	}
+
+	if((home_team_count < players_per_team))
+	{
+		scood_db_err(conn, query, res, "NOT ENOUGH HOME PLAYERS:", home_team_count, false, bJson);
+		return;
+	}
+	if((away_team_count < players_per_team))
+	{
+		scood_db_err(conn, query, res, "NOT ENOUGH AWAY PLAYERS:", away_team_count, false, bJson);
+		return;
+	}
+
 
 	// If swap is true, we need to recount the teams after swapping
 	if (swap)
 	{
-		home_team_count 	= 0;
-		away_team_count 	= 0;
-
-		for (int i = 0; i < 8; i++)
+		
+		for (int i = 0; i < players_per_game; i++)
 		{
-			if (players[i].team == 1)
-			{
-				home_team_count++;
-			}
-			else if (players[i].team == 2)
-			{
-				away_team_count++;
-			}
+			players[i].team = ((players[i].team == SCOOT_HOME) ? SCOOT_AWAY : SCOOT_HOME);
 		}
 	}
 
@@ -1395,7 +1461,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		PQclear(res);
 
 		// Assign teams to players respecting previous assignments
-		for (int i = 0; i < 8; i++)
+		for ( i = 0; i < 8; i++)
 		{
 			//	int 			team_to_assign;
 			sprintf(update_query, 
@@ -1470,21 +1536,6 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		}
 
 
-		// Get the players_per_team value from game_set
-		int 			players_per_team = 4;		// Default value
-
-		PQclear(res);
-		sprintf(query, 
-			"SELECT players_per_team FROM game_sets WHERE id = %d", 
-			game_set_id);
-
-
-		res 				= PQexec(conn, query);
-
-		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
-		{
-			players_per_team	= atoi(PQgetvalue(res, 0, 0));
-		}
 
 		// Update current_queue_position only - queue_next_up should not be changed by new-game
 		// current_queue_position should be incremented by (2 * players_per_team) for the players used in this game
