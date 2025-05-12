@@ -1089,7 +1089,7 @@ void scootd_output_games(int game_set_id, const char * court, PlayerInfo * playe
 		team_displayed = 0;
 		if(bJson)
 		{
-			printf("  \"team%d\": [\n", team); 				// Team 2 in JSON corresponds to HOME team
+			printf("  \"%s\": [\n", szTeams[team]); 				// Team 2 in JSON corresponds to HOME team
 		}
 		else
 		{
