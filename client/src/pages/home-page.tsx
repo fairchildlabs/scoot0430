@@ -173,8 +173,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
             id: g.id,
             court: g.court,
             state: g.state || 'started', // Default active games to 'started' state
-            team1Score: g.team1_score,
-            team2Score: g.team2_score,
+            homeScore: g.team1_score,
+            awayScore: g.team2_score,
             startTime: g.start_time,
             endTime: g.end_time,
             players: (g.players || []).map((p: any) => ({
@@ -428,8 +428,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                 id: g.id,
                 court: g.court,
                 state: g.state || 'started', // Default active games to 'started' state
-                team1Score: g.team1_score,
-                team2Score: g.team2_score,
+                homeScore: g.team1_score,
+                awayScore: g.team2_score,
                 startTime: g.start_time,
                 endTime: g.end_time,
                 players: (g.players || []).map((p: any) => ({
@@ -445,8 +445,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                 id: g.id,
                 court: g.court,
                 state: g.state || 'final',
-                team1Score: g.team1_score,
-                team2Score: g.team2_score,
+                homeScore: g.team1_score,
+                awayScore: g.team2_score,
                 startTime: g.start_time,
                 endTime: g.end_time || g.completed_at, // Use end_time or completed_at
                 players: (g.players || []).map((p: any) => ({
