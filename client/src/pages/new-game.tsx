@@ -60,7 +60,7 @@ type Checkin = {
 type ProposedGameData = {
   game_set_id: number;
   court: string;
-  team1: Array<{
+  AWAY: Array<{
     user_id: number;
     username: string;
     birth_year: number;
@@ -68,7 +68,7 @@ type ProposedGameData = {
     is_og: boolean;
     checkin_type?: string;
   }>;
-  team2: Array<{
+  HOME: Array<{
     user_id: number;
     username: string;
     birth_year: number;
@@ -208,7 +208,7 @@ const NewGamePage = () => {
               setSelectedCourt(otherCourt);
             }
             // Don't set proposedGameData in this case to avoid errors
-          } else if (data && data.team1 && data.team2) {
+          } else if (data && data.HOME && data.AWAY) {
             // Only set the game data if it has the expected structure
             setProposedGameData(data);
           } else if (data && data.success === true) {
@@ -328,9 +328,8 @@ const NewGamePage = () => {
       return player?.checkin_type || '';
     };
     
-    // IMPORTANT: Swap team1 and team2 to match text output format
-    // Map team2 (home) players from proposed game data
-    homePlayers = proposedGameData.team2.map((player, index) => ({
+    // Map HOME (home) players from proposed game data
+    homePlayers = proposedGameData.HOME.map((player, index) => ({
       userId: player.user_id,
       username: player.username,
       birthYear: player.birth_year,
@@ -340,8 +339,8 @@ const NewGamePage = () => {
       type: findPromotionType(player.user_id)
     }));
     
-    // Map team1 (away) players from proposed game data
-    awayPlayers = proposedGameData.team1.map((player, index) => ({
+    // Map AWAY (away) players from proposed game data
+    awayPlayers = proposedGameData.AWAY.map((player, index) => ({
       userId: player.user_id,
       username: player.username,
       birthYear: player.birth_year,
@@ -561,9 +560,9 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {proposedGameData && proposedGameData.team2 ? 
-                        // Show players from scootd proposal - SWAPPED to match text output
-                        proposedGameData.team2.map((player, index) => {
+                      {proposedGameData && proposedGameData.HOME ? 
+                        // Show players from scootd proposal
+                        proposedGameData.HOME.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
                           const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
                           return (
@@ -598,9 +597,9 @@ const NewGamePage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {proposedGameData && proposedGameData.team1 ? 
-                        // Show players from scootd proposal - SWAPPED to match text output
-                        proposedGameData.team1.map((player, index) => {
+                      {proposedGameData && proposedGameData.AWAY ? 
+                        // Show players from scootd proposal
+                        proposedGameData.AWAY.map((player, index) => {
                           // Find the player in the next_up_players array to get the checkin_type
                           const nextUpPlayer = gameSetStatus?.next_up_players?.find(p => p.user_id === player.user_id);
                           return (

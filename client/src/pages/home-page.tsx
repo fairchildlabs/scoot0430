@@ -128,7 +128,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
   const [, setLocation] = useLocation();
   
   // Now using the imported PromotionBadge component
-  const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; team1Score?: number; team2Score?: number; autoPromote: boolean }>>({});
+  const [gameScores, setGameScores] = useState<Record<number, { showInputs: boolean; homeScore?: number; awayScore?: number; autoPromote: boolean }>>({});
   const { toast } = useToast();
   
   // Use the route param ID if provided, otherwise use the direct prop
