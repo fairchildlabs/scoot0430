@@ -665,7 +665,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                 Home
                 {game.state === 'final' && (
                   <span className="ml-2 text-primary font-bold">
-                    {game.team1Score}
+                    {game.homeScore}
                   </span>
                 )}
               </CardTitle>
