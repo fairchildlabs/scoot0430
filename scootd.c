@@ -473,7 +473,7 @@ PGconn *connect_to_db() {
              db_user ? db_user : "postgres",
              db_password ? db_password : "");
 
-	printf("conn_info(%s)\n", conn_info);
+	//printf("conn_info(%s)\n", conn_info);
 	
 			 
     // Connect to database
