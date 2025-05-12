@@ -14,7 +14,7 @@
 /***************************************************************************************************/
 /********************* TODO: Move to scoot.h C header *********************************************/
 /***************************************************************************************************/
-#define NEW_PROPOSE_GAME
+#define BRANDON_CODED
 
 
 #define SCOOT_DBGLVL_NONE    0
@@ -988,7 +988,7 @@ void list_next_up_players(PGconn *conn, int game_set_id, const char *format) {
  * Propose a new game without creating it
  */
 
-#ifdef NEW_PROPOSE_GAME
+#ifdef BRANDON_CODED
 typedef struct 
 	{
 		int 			user_id;
@@ -1461,7 +1461,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		PQclear(res);
 
 		// Assign teams to players respecting previous assignments
-		for ( i = 0; i < 8; i++)
+		for ( i = 0; i < players_per_game; i++)
 		{
 			//	int 			team_to_assign;
 			sprintf(update_query, 
@@ -1549,7 +1549,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"current_queue_position = current_queue_position + %d "
 		"WHERE id = %d "
 		"RETURNING current_queue_position, queue_next_up", 
-			2 * players_per_team,					// Increment current_queue_position for both teams
+			players_per_game,					// Increment current_queue_position for both teams
 		game_set_id);
 
 		if (! (res = scootd_exec_query_and_status(conn, query, bJson, false, "Error: Could not update queue positions", game_set_id, PGRES_TUPLES_OK)))
