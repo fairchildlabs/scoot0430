@@ -302,14 +302,14 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
       ...prev,
       [gameId]: {
         showInputs: !prev[gameId]?.showInputs,
-        team1Score: prev[gameId]?.team1Score,
-        team2Score: prev[gameId]?.team2Score,
+        homeScore: prev[gameId]?.homeScore,
+        awayScore: prev[gameId]?.awayScore,
         autoPromote: prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true // Default to true
       }
     }));
   };
 
-  const updateScore = (gameId: number, team: 'team1Score' | 'team2Score', value: string) => {
+  const updateScore = (gameId: number, team: 'homeScore' | 'awayScore', value: string) => {
     const numValue = parseInt(value);
     if (!isNaN(numValue)) {
       setGameScores(prev => ({
@@ -335,7 +335,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
 
   const handleEndGame = async (gameId: number) => {
     const scores = gameScores[gameId];
-    if (scores?.team1Score === undefined || scores?.team2Score === undefined) {
+    if (scores?.homeScore === undefined || scores?.awayScore === undefined) {
       return;
     }
 
@@ -345,8 +345,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
       // Use the scootd end-game command API endpoint
       const response = await scootdApiRequest("POST", "end-game", {
         gameId: gameId,
-        homeScore: scores.team1Score,
-        awayScore: scores.team2Score,
+        homeScore: scores.homeScore,
+        awayScore: scores.awayScore,
         autoPromote: scores.autoPromote  // Use the autoPromote flag from the state
       });
 
@@ -355,7 +355,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
       // Show success toast
       toast({
         title: "Game Ended",
-        description: `Game #${gameId} ended with score: ${scores.team1Score}-${scores.team2Score}`,
+        description: `Game #${gameId} ended with score: ${scores.homeScore}-${scores.awayScore}`,
       });
 
       // Reset game scores state
@@ -363,8 +363,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
         ...prev,
         [gameId]: {
           showInputs: false,
-          team1Score: undefined,
-          team2Score: undefined,
+          homeScore: undefined,
+          awayScore: undefined,
           autoPromote: prev[gameId]?.autoPromote !== undefined ? prev[gameId].autoPromote : true
         }
       }));
@@ -696,8 +696,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                   <Input
                     type="number"
                     placeholder="Home Score"
-                    value={gameScores[game.id]?.team1Score || ''}
-                    onChange={(e) => updateScore(game.id, 'team1Score', e.target.value)}
+                    value={gameScores[game.id]?.homeScore || ''}
+                    onChange={(e) => updateScore(game.id, 'homeScore', e.target.value)}
                     className="w-full bg-white text-black"
                   />
                 </div>
@@ -743,8 +743,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                   <Input
                     type="number"
                     placeholder="Away Score"
-                    value={gameScores[game.id]?.team2Score || ''}
-                    onChange={(e) => updateScore(game.id, 'team2Score', e.target.value)}
+                    value={gameScores[game.id]?.awayScore || ''}
+                    onChange={(e) => updateScore(game.id, 'awayScore', e.target.value)}
                     className="w-full bg-white text-black"
                   />
                 </div>
@@ -776,8 +776,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
               <Button
                 onClick={() => handleEndGame(game.id)}
                 disabled={
-                  gameScores[game.id]?.team1Score === undefined ||
-                  gameScores[game.id]?.team2Score === undefined
+                  gameScores[game.id]?.homeScore === undefined ||
+                  gameScores[game.id]?.awayScore === undefined
                 }
               >
                 Submit Scores
