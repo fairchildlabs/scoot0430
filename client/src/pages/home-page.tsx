@@ -712,7 +712,7 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
                 Away
                 {game.state === 'final' && (
                   <span className="ml-2 text-white font-bold">
-                    {game.team2Score}
+                    {game.awayScore}
                   </span>
                 )}
               </CardTitle>
