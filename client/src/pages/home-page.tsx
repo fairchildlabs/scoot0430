@@ -96,8 +96,8 @@ interface GameSetStatus {
     id: number;
     court: string;
     state: string;
-    team1Score: number | null;
-    team2Score: number | null;
+    homeScore: number | null;
+    awayScore: number | null;
     startTime: string;
     endTime: string | null;
     players: {
@@ -188,8 +188,8 @@ export default function HomePage({ id, gameSetId }: HomePageProps) {
             id: g.id,
             court: g.court,
             state: g.state || 'final', // Default to 'final' for completed games
-            team1Score: g.team1_score,
-            team2Score: g.team2_score,
+            homeScore: g.team1_score,
+            awayScore: g.team2_score,
             startTime: g.start_time,
             endTime: g.end_time || g.completed_at, // Use end_time or completed_at
             players: (g.players || []).map((p: any) => ({
