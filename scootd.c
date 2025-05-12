@@ -1349,7 +1349,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		players[i].promotion_team = get_promoted_team(players[i].checkin_type);
 			
 
-		SCOOT_DBG_PRINT(SCOOT_DBGLVL_ERROR, "%d] uid = %d name = %s position = %d team %d type = %s promotion_team = %d\n", i, players[i].user_id,
+		SCOOT_DBG_PRINT(verbose, "%d] uid = %d name = %s position = %d team %d type = %s promotion_team = %d\n", i, players[i].user_id,
 			 players[i].username, players[i].position, players[i].team, players[i].checkin_type, players[i].promotion_team);
 
 
