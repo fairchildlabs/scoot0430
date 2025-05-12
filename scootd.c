@@ -1020,20 +1020,23 @@ void scood_db_err(PGconn * conn, char *query, PGresult *	res, char * szErrContex
 
 }
 
-PGresult * scootd_exec_query_and_status(PGconn * conn, char *query, bool bJson, bool bZeroRowsErr, char * szErrContext, int iValErrContext)
+PGresult * scootd_exec_query_and_status(PGconn * conn, char *query, bool bJson, bool bZeroRowsErr, char * szErrContext, int iValErrContext, int expectedStatus)
 {
 	PGresult *		res;
 	res 				= PQexec(conn, query);
 	bool bErr = true;
+	int verbose =  scoot_verbosity(SCOOT_DBGLVL_NONE,  CODE_PATH_SCOOTD); 
 
+	SCOOT_DBG_PRINT(verbose, "QUERY:%s\n", query);
+	
 	
 	if(bZeroRowsErr)
 	{
-		bErr = (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0);
+		bErr = ((PQresultStatus(res) != expectedStatus) || PQntuples(res) == 0);
 	}
 	else
 	{
-		bErr = (PQresultStatus(res) != PGRES_TUPLES_OK);
+		bErr = (PQresultStatus(res) != expectedStatus);
 	}
 
 	if (bErr)
@@ -1183,7 +1186,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	char			query[4096];
 	PGresult *		res;
 	bool            bJson = false;
-	int verbose =  scoot_verbosity(SCOOT_DBGLVL_INFO,  CODE_PATH_SCOOTD); 
+	int verbose =  scoot_verbosity(SCOOT_DBGLVL_NONE,  CODE_PATH_SCOOTD); 
 		
 	// Set default status_format to "none" if not provided
 	if (status_format == NULL)
@@ -1201,7 +1204,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"SELECT id, current_queue_position FROM game_sets WHERE id = %d", 
 		game_set_id);
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Game set not found", game_set_id)))
+	if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Game set not found", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
@@ -1217,7 +1220,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		game_set_id, court);
 
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Database error when checking active games", game_set_id)))
+	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Database error when checking active games", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
@@ -1244,7 +1247,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	"LIMIT 8", 
 		game_set_id, current_position, current_position + 8);
 
-	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Error getting next-up players", game_set_id)))
+	if(!(res = scootd_exec_query_and_status(conn, query, bJson, false, "Error getting next-up players", game_set_id, PGRES_TUPLES_OK)))
 	{
 		return;
 	}
@@ -1350,6 +1353,10 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 	// Create the game if bCreate is true
 	if (bCreate)
 	{
+		PGresult *		insert_res;
+		PGresult *		update_res;
+		char insert_query[256];
+		char update_query[256];
 		// Start a transaction
 		PQclear(res);
 		res 				= PQexec(conn, "BEGIN");
@@ -1357,7 +1364,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 
-			scood_db_err(conn, query, res, "Error: Could not start transaction", game_set_id, true, bJson);
+			scood_db_err(conn, "BEGIN", res, "Error: Could not start transaction", game_set_id, true, bJson);
 
 			return;
 		}
@@ -1370,7 +1377,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"VALUES (%d, '%s', 0, 0, 'active', NOW()) RETURNING id", 
 			game_set_id, court);
 
-		if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Database error: Could not create game", game_set_id)))
+		if(!(res = scootd_exec_query_and_status(conn, query, bJson, true,  "Database error: Could not create game", game_set_id, PGRES_TUPLES_OK)))
 		{
 			PQclear(res);
 			PQexec(conn, "ROLLBACK");
@@ -1386,7 +1393,8 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		// Assign teams to players respecting previous assignments
 		for (int i = 0; i < 8; i++)
 		{
-			int 			team_to_assign;
+		//	int 			team_to_assign;
+		
 
 			sprintf(update_query, 
 				"UPDATE checkins SET game_id = %d, team = %d "
@@ -1395,6 +1403,20 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 				          players[i].team, 
 				          players[i].checkin_id);
 
+
+			SCOOT_DBG_PRINT(verbose, "%d] uid = %d name = %s position = %d team %d\n", i, players[i].user_id, players[i].username, players[i].position, players[i].team);
+
+
+#if 1
+			if(!(update_res = scootd_exec_query_and_status(conn, update_query, bJson, false,  "Error: Could not assign player to game", game_set_id, PGRES_COMMAND_OK)))
+				{
+					PQclear(res);
+					PQexec(conn, "ROLLBACK");
+					return;
+			
+				}
+
+#else
 			PGresult *		update_res = PQexec(conn, update_query);
 
 			if (PQresultStatus(update_res) != PGRES_COMMAND_OK)
@@ -1418,8 +1440,10 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 				return;
 			}
+#endif
 
 			PQclear(update_res);
+
 
 			// Calculate relative position within team (1-4)
 			int 			relative_pos = 1;
@@ -1433,12 +1457,24 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			}
 
 			// Insert into game_players
-			char			insert_query[256];
+
+
 
 			sprintf(insert_query, 
 				"INSERT INTO game_players (game_id, user_id, team, relative_position) "
 			"VALUES (%d, %d, %d, %d)", 
 				game_id, players[i].user_id, players[i].team, relative_pos);
+
+#if 1
+			if(!(insert_res = scootd_exec_query_and_status(conn, insert_query, bJson, false,  "Error: Could not create game_player record", game_set_id, PGRES_COMMAND_OK)))
+				{
+					PQclear(insert_res);
+					PQexec(conn, "ROLLBACK");
+					return;
+			
+				}
+
+#else
 
 			PGresult *		insert_res = PQexec(conn, insert_query);
 
@@ -1463,18 +1499,29 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 				return;
 			}
+#endif
 
 			PQclear(insert_res);
 		}
-
 		// Set is_active = FALSE for players in the new game
-		PQclear(res);
+		//PQclear(res);
 		sprintf(query, 
 			"UPDATE checkins SET is_active = FALSE "
 		"WHERE game_id = %d "
 		"RETURNING id", 
 			game_id);
 
+
+#if 1
+		if(!(res = scootd_exec_query_and_status(conn, query, bJson, false,  "Error: Could not deactivate player check-ins", game_set_id, PGRES_TUPLES_OK)))
+			{
+				PQclear(res);
+				PQexec(conn, "ROLLBACK");
+				return;
+		
+			}
+
+#else
 		res 				= PQexec(conn, query);
 
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1497,6 +1544,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 			return;
 		}
+#endif
 
 		// Get the players_per_team value from game_set
 		int 			players_per_team = 4;		// Default value
@@ -1505,6 +1553,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		sprintf(query, 
 			"SELECT players_per_team FROM game_sets WHERE id = %d", 
 			game_set_id);
+
 
 		res 				= PQexec(conn, query);
 
@@ -1517,6 +1566,9 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		// current_queue_position should be incremented by (2 * players_per_team) for the players used in this game
 		// queue_next_up should remain unchanged as it's only affected by check-ins or end-game
 		PQclear(res);
+
+
+
 		sprintf(query, 
 			"UPDATE game_sets SET "
 		"current_queue_position = current_queue_position + %d "
@@ -1524,7 +1576,16 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		"RETURNING current_queue_position, queue_next_up", 
 			2 * players_per_team,					// Increment current_queue_position for both teams
 		game_set_id);
+#if 1
+		if(!(res = scootd_exec_query_and_status(conn, query, bJson, false,  "Error: Could not update queue positions", game_set_id, PGRES_TUPLES_OK)))
+			{
+				PQclear(res);
+				PQexec(conn, "ROLLBACK");
+				return;
+		
+			}
 
+#else
 		res 				= PQexec(conn, query);
 
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1547,6 +1608,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 			return;
 		}
+#endif
 
 		// Commit the transaction
 		PQclear(res);
@@ -1554,6 +1616,10 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
+#if 1
+			scood_db_err(conn, query, res, "Error: Transaction failed", player_count, true, bJson);
+			PQexec(conn, "ROLLBACK");
+#else
 			fprintf(stderr, "COMMIT command failed: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQexec(conn, "ROLLBACK");
@@ -1570,9 +1636,27 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 				printf("Error: Transaction failed\n");
 			}
 
+#endif
+
 			return;
 		}
 
+#if 1
+		if (bJson)
+		{
+			printf("{\n");
+			printf("  \"status\": \"SUCCESS\",\n");
+			printf("  \"message\": \"Game created successfully\",\n");
+			printf("  \"game_id\": %d,\n", game_id);
+			printf("  \"court\": \"%s\"\n", court);
+			printf("}\n");
+		}
+		else 
+		{
+			printf("Game created successfully (Game ID: %d, Court: %s)\n", game_id, court);
+		}
+
+#else
 		if (strcmp(format, "json") == 0)
 		{
 			printf("{\n");
@@ -1586,6 +1670,8 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 		{
 			printf("Game created successfully (Game ID: %d, Court: %s)\n", game_id, court);
 		}
+#endif
+
 	}
 	else 
 	{
