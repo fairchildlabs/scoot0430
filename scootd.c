@@ -486,7 +486,7 @@ PGconn *connect_to_db() {
         return NULL;
     }
     
-    printf("Successfully connected to the database\n");
+    //printf("Successfully connected to the database\n");
     return conn;
 }
 
@@ -1086,6 +1086,7 @@ void scootd_output_games(int game_set_id, const char * court, PlayerInfo * playe
 
 	for (int team = 1; team < 3; team++)
 	{
+		team_displayed = 0;
 		if(bJson)
 		{
 			printf("  \"team%d\": [\n", team); 				// Team 2 in JSON corresponds to HOME team
