@@ -1382,7 +1382,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			players[i].team = SCOOT_HOME;
 			home_team_count++;
 		}
-
+		i++;
 	}
 
 	i = 0;
@@ -1393,7 +1393,7 @@ void propose_game(PGconn * conn, int game_set_id, const char * court, const char
 			players[i].team = SCOOT_AWAY;
 			away_team_count++;
 		}
-
+		i++;
 	}
 
 	if((home_team_count < players_per_team))
